@@ -1,0 +1,1755 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Telemetry Viewer</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Sora:wght@400;500;600;700&display=swap');
+
+    :root {
+      --bg: #f2ede2;
+      --bg-2: #efe8dc;
+      --surface: #ffffff;
+      --surface-2: #f8f2e8;
+      --surface-3: #fff7ef;
+      --border: #e0d6c4;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --accent: #b45309;
+      --accent-2: #0f766e;
+      --shadow: 0 10px 28px rgba(31, 41, 55, 0.12);
+      --user-bg: #e7f4f1;
+      --user-border: #b9e0d8;
+      --assistant-bg: #e7efff;
+      --assistant-border: #c9d8ff;
+      --system-bg: #fff1d6;
+      --system-border: #f3d7a5;
+      --tool-bg: #eef2f7;
+      --tool-border: #d8e0ea;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      height: 100%;
+      overflow: hidden;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Sora", "Segoe UI", sans-serif;
+      font-size: 14px;
+      color: var(--text);
+      background:
+        radial-gradient(900px 400px at 8% 0%, #fbf5ea 0%, rgba(251, 245, 234, 0) 60%),
+        radial-gradient(1000px 500px at 90% 10%, #eef6f3 0%, rgba(238, 246, 243, 0) 55%),
+        linear-gradient(180deg, var(--bg) 0%, var(--bg-2) 100%);
+      min-height: 100vh;
+    }
+
+    [x-cloak] { display: none !important; }
+
+    #app {
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .top-bar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      padding: 14px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.7);
+      backdrop-filter: blur(8px);
+    }
+
+    .title-block {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .title-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .tag {
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--accent);
+      border: 1px solid rgba(180, 83, 9, 0.3);
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: var(--surface-3);
+    }
+
+    .title-text {
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .subtitle {
+      font-size: 12px;
+      color: var(--muted);
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+
+    .btn {
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: 10px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .btn:hover { transform: translateY(-1px); box-shadow: 0 6px 14px rgba(31, 41, 55, 0.12); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .btn.secondary {
+      background: var(--surface-2);
+      color: var(--muted);
+    }
+
+    .segmented {
+      display: inline-flex;
+      padding: 3px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--surface-2);
+      gap: 4px;
+    }
+
+    .segmented button {
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      font-weight: 600;
+      padding: 6px 14px;
+      border-radius: 999px;
+      cursor: pointer;
+    }
+
+    .segmented button.active {
+      background: var(--text);
+      color: #ffffff;
+    }
+
+    .control {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--muted);
+      padding: 4px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    .control input { accent-color: var(--accent-2); }
+
+    .workspace {
+      flex: 1;
+      padding: 16px;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .agent-view {
+      height: 100%;
+      min-height: 0;
+    }
+
+    .agent-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      grid-auto-rows: minmax(0, 1fr);
+      align-content: stretch;
+      gap: 16px;
+      height: 100%;
+      min-height: 0;
+    }
+
+    .agent-card {
+      display: flex;
+      flex-direction: column;
+      min-height: 420px;
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .agent-card-header {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+      background: linear-gradient(135deg, #fff9f0 0%, #ffffff 100%);
+    }
+
+    .agent-identity { display: flex; flex-direction: column; gap: 2px; }
+
+    .agent-name { font-weight: 600; font-size: 15px; }
+
+    .agent-path {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 10px;
+      color: var(--muted);
+      word-break: break-all;
+    }
+
+    .agent-meta {
+      margin-top: 8px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .meta-chip {
+      font-size: 10px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--surface-2);
+      color: var(--text);
+    }
+
+    .agent-context {
+      margin-top: 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .context-bar {
+      flex: 1;
+      height: 8px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--surface-2);
+      overflow: hidden;
+    }
+
+    .context-bar-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #0ea5e9, #22c55e);
+      transition: width 0.2s ease;
+    }
+
+    .context-bar-fill.over {
+      background: linear-gradient(90deg, #f97316, #ef4444);
+    }
+
+    .context-label {
+      font-size: 10px;
+      font-family: "JetBrains Mono", monospace;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .context-label.compacting {
+      color: #b45309;
+      font-weight: 600;
+    }
+
+    .agent-messages {
+      flex: 1;
+      overflow: auto;
+      padding: 12px;
+      min-height: 0;
+      background: linear-gradient(180deg, #ffffff 0%, #fdfaf5 100%);
+    }
+
+    .agent-message-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .message { display: flex; }
+    .message.role-user { justify-content: flex-start; }
+    .message.role-assistant { justify-content: flex-end; }
+    .message.role-system { justify-content: center; }
+    .message.role-tool { justify-content: flex-start; }
+    .message.role-unknown { justify-content: flex-start; }
+
+    .bubble {
+      max-width: 84%;
+      border-radius: 14px;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      box-shadow: 0 6px 16px rgba(31, 41, 55, 0.08);
+    }
+
+    .message.role-user .bubble { background: var(--user-bg); border-color: var(--user-border); }
+    .message.role-assistant .bubble { background: var(--assistant-bg); border-color: var(--assistant-border); }
+    .message.role-system .bubble { background: var(--system-bg); border-color: var(--system-border); }
+    .message.role-tool .bubble { background: var(--tool-bg); border-color: var(--tool-border); }
+
+    .bubble-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+
+    .role-pill {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid transparent;
+    }
+
+    .role-pill.role-user { color: #0f766e; background: rgba(15, 118, 110, 0.12); border-color: rgba(15, 118, 110, 0.25); }
+    .role-pill.role-assistant { color: #1d4ed8; background: rgba(37, 99, 235, 0.12); border-color: rgba(37, 99, 235, 0.25); }
+    .role-pill.role-system { color: #b45309; background: rgba(180, 83, 9, 0.12); border-color: rgba(180, 83, 9, 0.25); }
+    .role-pill.role-tool { color: #475569; background: rgba(71, 85, 105, 0.12); border-color: rgba(71, 85, 105, 0.25); }
+    .role-pill.role-unknown { color: #6b7280; background: rgba(107, 114, 128, 0.12); border-color: rgba(107, 114, 128, 0.25); }
+
+    .bubble-index {
+      font-size: 10px;
+      color: var(--muted);
+      font-family: "JetBrains Mono", monospace;
+    }
+
+    .bubble-body {
+      font-size: 12.5px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+    }
+
+    .part { margin-bottom: 6px; }
+    .part:last-child { margin-bottom: 0; }
+
+    .part.image img {
+      max-width: 100%;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+    }
+
+    .toolcalls {
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px dashed var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .toolcalls-title {
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .toolcall {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 6px 8px;
+      background: var(--surface-2);
+    }
+
+    .toolcall-name {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 11px;
+      color: var(--accent-2);
+    }
+
+    .toolcall-args {
+      margin: 4px 0 0;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 11px;
+      white-space: pre-wrap;
+      color: var(--text);
+    }
+
+    .reasoning {
+      margin-top: 8px;
+      border: 1px dashed var(--border);
+      border-radius: 10px;
+      background: #fff9f0;
+      padding: 0;
+    }
+
+    .reasoning summary {
+      cursor: pointer;
+      font-size: 10px;
+      font-weight: 600;
+      padding: 6px 8px;
+      color: var(--muted);
+    }
+
+    .reasoning pre {
+      margin: 0;
+      padding: 8px;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 11px;
+      white-space: pre-wrap;
+      color: var(--text);
+    }
+
+    .empty-state {
+      grid-column: 1 / -1;
+      border: 1px dashed var(--border);
+      border-radius: 16px;
+      padding: 24px;
+      text-align: center;
+      color: var(--muted);
+      background: rgba(255, 255, 255, 0.6);
+    }
+
+    .firehose-view {
+      height: 100%;
+      display: flex;
+      gap: 16px;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .artifact-view {
+      height: 100%;
+      display: grid;
+      grid-template-columns: 280px minmax(0, 1fr);
+      gap: 16px;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .artifact-panel {
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: var(--surface);
+      box-shadow: var(--shadow);
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .artifact-panel-header {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .artifact-panel-title {
+      font-weight: 600;
+    }
+
+    .artifact-search {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 6px 10px;
+      font-size: 12px;
+      width: 100%;
+      background: var(--surface-2);
+    }
+
+    .artifact-list {
+      overflow-y: auto;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      min-height: 0;
+    }
+
+    .artifact-item {
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid transparent;
+      background: var(--surface-2);
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .artifact-item.active {
+      border-color: var(--accent);
+      background: var(--surface-3);
+    }
+
+    .artifact-name {
+      font-weight: 600;
+      font-size: 13px;
+    }
+
+    .artifact-meta {
+      font-size: 11px;
+      color: var(--muted);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .artifact-detail {
+      padding: 16px;
+      overflow-y: auto;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .artifact-header {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .artifact-id {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 12px;
+      color: var(--muted);
+      word-break: break-all;
+    }
+
+    .artifact-versions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .artifact-version {
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--surface-2);
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .artifact-version.active {
+      background: var(--text);
+      color: #ffffff;
+      border-color: var(--text);
+    }
+
+    .artifact-code pre {
+      margin: 0;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 12px;
+      padding: 14px;
+      border-radius: 12px;
+      overflow-x: auto;
+    }
+
+    .artifact-code pre code {
+      display: block;
+      white-space: pre;
+    }
+
+    .artifact-empty {
+      padding: 24px;
+      text-align: center;
+      color: var(--muted);
+    }
+
+    .topics {
+      width: 220px;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 12px;
+      background: var(--surface);
+      box-shadow: var(--shadow);
+      overflow: auto;
+      height: 100%;
+      min-height: 0;
+    }
+
+    .topics-title {
+      margin-bottom: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .topic-item {
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .feed {
+      flex: 1;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 12px 14px;
+      background: var(--surface);
+      box-shadow: var(--shadow);
+      overflow: auto;
+      height: 100%;
+      min-height: 0;
+    }
+
+    .feed-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+
+    .event {
+      border-bottom: 1px dashed var(--border);
+      padding: 10px 0;
+    }
+
+    .event:last-child { border-bottom: none; }
+
+    .meta {
+      font-size: 11px;
+      color: var(--muted);
+      font-family: "JetBrains Mono", monospace;
+      margin-bottom: 6px;
+    }
+
+    .event pre {
+      margin: 0;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 11.5px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+    }
+
+    .image-inline img {
+      max-width: 320px;
+      max-height: 180px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      vertical-align: middle;
+      margin-left: 4px;
+    }
+
+    @media (max-width: 980px) {
+      .top-bar { flex-direction: column; align-items: flex-start; }
+      .controls { justify-content: flex-start; }
+      .firehose-view { flex-direction: column; }
+      .topics { width: 100%; max-height: 180px; }
+      .artifact-view { grid-template-columns: 1fr; }
+    }
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github-dark.min.css" />
+  <script defer src="https://cdn.jsdelivr.net/npm/@formkit/auto-animate@0.8.2/index.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/core.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/javascript.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/json.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/plaintext.min.js"></script>
+</head>
+<body>
+  <div id="app" x-data="app()" x-init="init()">
+    <header class="top-bar">
+      <div class="title-block">
+        <div class="title-row">
+          <span class="tag">Telemetry</span>
+          <span class="title-text">Agent Context Viewer</span>
+        </div>
+        <div class="subtitle">
+          <span x-text="status"></span>
+          <span>|</span>
+          <span x-text="agentCount() + ' agents'"></span>
+        </div>
+      </div>
+      <div class="controls">
+        <div class="segmented" role="tablist">
+          <button :class="viewMode === 'agents' ? 'active' : ''" @click="viewMode = 'agents'">Agents</button>
+          <button :class="viewMode === 'firehose' ? 'active' : ''" @click="viewMode = 'firehose'">Firehose</button>
+          <button :class="viewMode === 'artifacts' ? 'active' : ''" @click="viewMode = 'artifacts'">Artifacts</button>
+        </div>
+        <button class="btn secondary" @click="paused = !paused" x-text="paused ? 'Resume' : 'Pause'"></button>
+        <button class="btn" @click="clearAll">Clear All</button>
+        <label class="control" x-show="viewMode === 'agents'" x-cloak>
+          <input type="checkbox" x-model="autoScrollAgents" />
+          <span>Auto-scroll agents</span>
+        </label>
+        <label class="control" x-show="viewMode === 'firehose'" x-cloak>
+          <input type="checkbox" x-model="autoScrollFeed" />
+          <span>Auto-scroll feed</span>
+        </label>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <section class="agent-view" x-show="viewMode === 'agents'" x-cloak>
+        <div class="agent-grid">
+          <template x-for="agent in sortedAgents()" :key="agent.key">
+            <div class="agent-card">
+              <div class="agent-card-header">
+                <div class="agent-identity">
+                  <div class="agent-name" x-text="shortAgent(agent.key)"></div>
+                  <div class="agent-path" x-text="agent.key"></div>
+                </div>
+                <div class="agent-meta">
+                  <span class="meta-chip" x-text="'Last: ' + formatTime(agent.lastTimestamp)"></span>
+                  <span class="meta-chip" x-text="'Msgs: ' + (agent.messageCount ?? 0)"></span>
+                  <span class="meta-chip" x-text="'Tools: ' + (agent.toolCount ?? 0)"></span>
+                  <span class="meta-chip" x-text="'Persist: ' + (agent.persistentCount ?? 0)"></span>
+                </div>
+                <div class="agent-context" x-show="hasContextStatus(agent)" x-cloak>
+                  <div class="context-bar">
+                    <div class="context-bar-fill" :class="contextFillClass(agent)" :style="contextBarStyle(agent)"></div>
+                  </div>
+                  <div class="context-label" :class="agent.compacting ? 'compacting' : ''" x-text="contextLabel(agent)"></div>
+                </div>
+              </div>
+              <div class="agent-messages" :data-agent="agent.key" x-init="registerAgentContainer(agent.key, $el)">
+                <div class="agent-message-list" x-init="initAutoAnimate($el)">
+                  <template x-for="(msg, idx) in (agent.context || [])" :key="msg._key || msg.id || msg._localId || idx">
+                    <div class="message" :class="'role-' + roleClass(msg.role)">
+                      <div class="bubble">
+                        <div class="bubble-header">
+                          <span class="role-pill" :class="'role-' + roleClass(msg.role)" x-text="roleLabel(msg.role)"></span>
+                          <span class="bubble-index" x-text="idx + 1"></span>
+                        </div>
+                        <div class="bubble-body" x-html="renderContent(msg.content)"></div>
+                        <template x-if="msg.toolCalls && msg.toolCalls.length">
+                          <div class="toolcalls">
+                            <div class="toolcalls-title">Tool calls</div>
+                            <template x-for="(toolCall, tIdx) in msg.toolCalls" :key="toolCall.id || tIdx">
+                              <div class="toolcall">
+                                <div class="toolcall-name" x-text="toolCall.name || 'unknown_tool'"></div>
+                                <pre class="toolcall-args" x-text="formatArgs(toolCall.args)"></pre>
+                              </div>
+                            </template>
+                          </div>
+                        </template>
+                        <template x-if="msg.reasoning">
+                          <details class="reasoning">
+                            <summary>Reasoning</summary>
+                            <pre x-text="msg.reasoning"></pre>
+                          </details>
+                        </template>
+                        <template x-if="msg.reasoningDetails || msg.reasoning_details">
+                          <details class="reasoning">
+                            <summary>Reasoning details</summary>
+                            <pre x-text="formatReasoningDetails(msg.reasoningDetails || msg.reasoning_details)"></pre>
+                          </details>
+                        </template>
+                      </div>
+                    </div>
+                  </template>
+                </div>
+              </div>
+            </div>
+          </template>
+          <div class="empty-state" x-show="sortedAgents().length === 0" x-cloak>
+            Waiting for llm_send snapshots. Start a run to populate agent context panels.
+          </div>
+        </div>
+      </section>
+
+      <section class="firehose-view" x-show="viewMode === 'firehose'" x-cloak>
+        <aside class="topics">
+          <div class="topics-title">Topics</div>
+          <template x-for="topic in sortedTopics()" :key="topic">
+            <label class="topic-item">
+              <input type="checkbox" x-model="topicFilters[topic]" />
+              <span x-text="topic"></span>
+            </label>
+          </template>
+        </aside>
+        <div class="feed" x-ref="feed">
+          <div class="feed-list" x-init="initAutoAnimate($el)">
+            <template x-for="evt in filteredEvents()" :key="evt._id">
+              <div class="event">
+                <div class="meta" x-text="time(evt) + ' - ' + (evt.Topic || evt.Type) + ' - ' + (evt.Agent || 'unknown')"></div>
+                <pre x-html="prettyWithImages(evt.Payload)"></pre>
+              </div>
+            </template>
+          </div>
+        </div>
+      </section>
+
+      <section class="artifact-view" x-show="viewMode === 'artifacts'" x-cloak>
+        <div class="artifact-panel">
+          <div class="artifact-panel-header">
+            <div class="artifact-panel-title">Artifacts</div>
+            <input class="artifact-search" placeholder="Search artifacts" x-model="artifactSearch" />
+          </div>
+          <div class="artifact-list" x-init="initAutoAnimate($el)">
+            <template x-for="artifact in filteredArtifacts()" :key="artifact.id">
+              <div class="artifact-item" :class="artifact.id === selectedArtifactId ? 'active' : ''" @click="selectArtifact(artifact.id)">
+                <div class="artifact-name" x-text="artifactDisplayName(artifact.id)"></div>
+                <div class="artifact-meta">
+                  <span x-text="artifactAgentName(artifact.id)"></span>
+                  <span x-text="'v' + (artifact.latestVersion || 0)"></span>
+                  <span x-text="formatTime(artifact.lastTimestamp)"></span>
+                </div>
+              </div>
+            </template>
+            <div class="artifact-empty" x-show="filteredArtifacts().length === 0" x-cloak>
+              No artifacts yet. Emit an artifact to populate this panel.
+            </div>
+          </div>
+        </div>
+
+        <div class="artifact-panel">
+          <div class="artifact-detail" x-show="currentArtifact()" x-cloak>
+            <div class="artifact-header">
+              <div class="artifact-panel-title" x-text="artifactDisplayName(selectedArtifactId)"></div>
+              <div class="artifact-id" x-text="selectedArtifactId"></div>
+              <div class="artifact-meta">
+                <span x-text="'Version ' + (selectedArtifactVersion || 0)"></span>
+                <span x-text="formatTime(currentArtifactVersion() && currentArtifactVersion().timestampMs)"></span>
+                <span x-text="artifactLanguageLabel(currentArtifactVersion())"></span>
+              </div>
+            </div>
+            <div class="artifact-versions">
+              <template x-for="version in artifactVersionList()" :key="version.version">
+                <button class="artifact-version" :class="version.version === selectedArtifactVersion ? 'active' : ''" @click="selectArtifactVersion(version.version)" x-text="'v' + version.version"></button>
+              </template>
+            </div>
+            <div class="artifact-code" x-html="renderArtifactContent(currentArtifactVersion())" x-ref="artifactCode"></div>
+          </div>
+          <div class="artifact-empty" x-show="!currentArtifact()" x-cloak>
+            Select an artifact to view its versions and contents.
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    function app() {
+      return {
+        status: 'Starting...',
+        paused: false,
+        viewMode: 'agents',
+        autoScrollFeed: true,
+        autoScrollAgents: true,
+        events: [],
+        topicFilters: {},
+        seen: new Set(),
+        lastId: 0,
+        pollMs: 1000,
+        timer: null,
+        agentMap: {},
+        animatedElements: new WeakSet(),
+        localMessageId: 1,
+        messageKeyCache: {},
+        agentContainers: {},
+        agentOrder: {},
+        nextAgentOrder: 1,
+        artifacts: {},
+        artifactSearch: '',
+        artifactOrder: {},
+        nextArtifactOrder: 1,
+        selectedArtifactId: null,
+        selectedArtifactVersion: null,
+
+        init() {
+          console.log('[viewer] init');
+          this.startPolling();
+          this.loadArtifacts();
+          this.registerHighlight();
+          this.ensureAutoAnimate();
+          this.$watch('viewMode', () => {
+            this.$nextTick(() => this.ensureAutoAnimate());
+            if (this.viewMode === 'artifacts') this.$nextTick(() => this.highlightArtifact());
+          });
+        },
+
+        startPolling() {
+          this.status = 'Polling...';
+          this.poll();
+          if (this.timer) clearInterval(this.timer);
+          this.timer = setInterval(() => this.poll(), this.pollMs);
+        },
+
+        async poll() {
+          if (this.paused) return;
+          try {
+            const res = await fetch(`/events?after=${this.lastId}`, { cache: 'no-store' });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const body = await res.json();
+            const list = Array.isArray(body) ? body : (body.events || []);
+            const latest = body.lastId ?? (list.length ? list[list.length - 1].Id : this.lastId);
+            list.forEach(evt => this.ingest(evt));
+            if (Number.isFinite(latest)) this.lastId = Math.max(this.lastId, latest);
+            this.status = `Live - lastId ${this.lastId}`;
+          } catch (err) {
+            console.error('[viewer] poll error', err);
+            this.status = `Error polling (${err.message})`;
+          }
+        },
+
+        async loadArtifacts() {
+          try {
+            const res = await fetch('/artifacts', { cache: 'no-store' });
+            if (!res.ok) return;
+            const body = await res.json();
+            const snapshot = body && body.artifacts ? body.artifacts : {};
+            this.ingestArtifactSnapshot(snapshot);
+          } catch (err) {
+            console.warn('[viewer] artifacts load error', err);
+          }
+        },
+
+        ingest(evt) {
+          const eid = evt.Id ?? `${evt.TimestampMs}-${this.events.length}`;
+          if (this.seen.has(eid)) return;
+          this.seen.add(eid);
+          evt._id = eid;
+          this.events.push(evt);
+          const topic = evt.Topic || evt.Type || 'unknown';
+          if (!(topic in this.topicFilters)) this.topicFilters[topic] = true;
+
+          const eventType = evt.Type || evt.Topic;
+          if (eventType === 'llm_send') {
+            this.updateAgentSnapshot(evt);
+          } else if (eventType === 'llm_response') {
+            this.appendAgentMessage(evt.Agent, evt.Payload && evt.Payload.response, evt.TimestampMs);
+          } else if (eventType === 'tool_calls_received') {
+            this.appendAgentMessage(evt.Agent, evt.Payload && evt.Payload.assistant, evt.TimestampMs);
+          } else if (eventType === 'tool_call_result') {
+            this.appendToolResultMessage(evt);
+          } else if (eventType === 'remainingContext') {
+            this.updateContextStatus(evt);
+          } else if (eventType === 'compactionStarted') {
+            this.setCompactionState(evt.Agent, true, evt);
+          } else if (eventType === 'compactionFinished') {
+            this.setCompactionState(evt.Agent, false, evt);
+          } else if (eventType === 'artifact_update') {
+            this.ingestArtifactUpdate(evt);
+          }
+
+          this.scrollFeedToBottom();
+        },
+
+        updateAgentSnapshot(evt) {
+          const agentKey = evt.Agent || 'unknown_agent';
+          const payload = evt.Payload || {};
+          if (!Array.isArray(payload.context)) return;
+          this.ensureAgentOrder(agentKey);
+          const scrollState = this.captureAgentScroll(agentKey);
+          this.beginSnapshot(agentKey);
+          const normalizedContext = payload.context.map((msg) => this.normalizeMessage(msg, agentKey, 'snapshot'));
+
+          const current = this.agentMap[agentKey] || {};
+
+          this.agentMap[agentKey] = {
+            ...current,
+            key: agentKey,
+            context: normalizedContext,
+            messageCount: payload.messageCount ?? normalizedContext.length,
+            toolCount: payload.toolCount ?? 0,
+            persistentCount: payload.persistentCount ?? 0,
+            lastTimestamp: evt.TimestampMs || Date.now(),
+            version: evt.Id || Date.now()
+          };
+
+          this.ensureAutoAnimate();
+          this.restoreAgentScroll(agentKey, scrollState);
+        },
+
+        appendAgentMessage(agentKey, message, timestamp) {
+          if (!message) return;
+          const key = agentKey || 'unknown_agent';
+          this.ensureAgentOrder(key);
+          const scrollState = this.captureAgentScroll(key);
+          const current = this.agentMap[key] || {
+            key,
+            context: [],
+            messageCount: 0,
+            toolCount: 0,
+            persistentCount: 0,
+            lastTimestamp: 0,
+            version: 0
+          };
+          const nextContext = Array.isArray(current.context) ? current.context.slice() : [];
+          const normalized = this.normalizeMessage(message, key, 'append');
+          if (this.isCoreRole(normalized.role)) {
+            const insertIndex = this.findCoreInsertIndex(nextContext);
+            nextContext.splice(insertIndex, 0, normalized);
+          } else {
+            nextContext.push(normalized);
+          }
+          this.agentMap[key] = {
+            ...current,
+            context: nextContext,
+            messageCount: nextContext.length,
+            persistentCount: (current.persistentCount ?? 0) + 1,
+            lastTimestamp: timestamp || Date.now(),
+            version: (current.version || 0) + 1
+          };
+          this.ensureAutoAnimate();
+          this.restoreAgentScroll(key, scrollState);
+        },
+
+        appendToolResultMessage(evt) {
+          const payload = evt.Payload || {};
+          const content = payload.content ?? (payload.message ? [{ type: 'text', text: payload.message }] : '');
+          this.appendAgentMessage(evt.Agent, { role: 'tool', content }, evt.TimestampMs);
+        },
+
+        updateContextStatus(evt) {
+          const agentKey = evt.Agent || 'unknown_agent';
+          const payload = evt.Payload || {};
+          this.ensureAgentOrder(agentKey);
+          const current = this.agentMap[agentKey] || {
+            key: agentKey,
+            context: [],
+            messageCount: 0,
+            toolCount: 0,
+            persistentCount: 0,
+            lastTimestamp: 0,
+            version: 0
+          };
+          const numMessages = Number(payload.numMessages ?? payload.num_messages ?? 0);
+          const maxMessages = Number(payload.maxMessages ?? payload.max_messages ?? 0);
+          const percentage = Number(payload.percentage ?? payload.percent ?? 0);
+          this.agentMap[agentKey] = {
+            ...current,
+            contextStatus: {
+              numMessages: Number.isFinite(numMessages) ? numMessages : 0,
+              maxMessages: Number.isFinite(maxMessages) ? maxMessages : 0,
+              percentage: Number.isFinite(percentage) ? percentage : 0
+            }
+          };
+        },
+
+        setCompactionState(agentKey, isCompacting, evt) {
+          const key = agentKey || 'unknown_agent';
+          this.ensureAgentOrder(key);
+          const current = this.agentMap[key] || {
+            key,
+            context: [],
+            messageCount: 0,
+            toolCount: 0,
+            persistentCount: 0,
+            lastTimestamp: 0,
+            version: 0
+          };
+          this.agentMap[key] = {
+            ...current,
+            compacting: !!isCompacting,
+            lastTimestamp: evt && evt.TimestampMs ? evt.TimestampMs : current.lastTimestamp
+          };
+        },
+
+        hasContextStatus(agent) {
+          if (!agent || !agent.contextStatus) return false;
+          const max = Number(agent.contextStatus.maxMessages ?? 0);
+          return Number.isFinite(max) && max > 0;
+        },
+
+        contextPercentage(agent) {
+          if (!agent || !agent.contextStatus) return 0;
+          const status = agent.contextStatus;
+          const max = Number(status.maxMessages ?? 0);
+          const num = Number(status.numMessages ?? 0);
+          if (!Number.isFinite(max) || max <= 0) return 0;
+          const provided = Number(status.percentage);
+          if (Number.isFinite(provided) && provided > 0) return provided;
+          return (num / max) * 100;
+        },
+
+        contextBarStyle(agent) {
+          const pct = this.contextPercentage(agent);
+          const clamped = Math.min(Math.max(pct, 0), 100);
+          return `width: ${clamped}%`;
+        },
+
+        contextFillClass(agent) {
+          const pct = this.contextPercentage(agent);
+          return pct > 100 ? 'over' : '';
+        },
+
+        contextLabel(agent) {
+          if (!this.hasContextStatus(agent)) return '';
+          const status = agent.contextStatus;
+          const pct = Math.round(this.contextPercentage(agent));
+          const num = Number(status.numMessages ?? 0);
+          const max = Number(status.maxMessages ?? 0);
+          const bar = this.buildAsciiBar(pct, 10);
+          const compacting = agent && agent.compacting ? ' / COMPACTING...' : '';
+          return `${bar} ${pct}% (${num}/${max} msgs)${compacting}`;
+        },
+
+        buildAsciiBar(percentage, slots) {
+          const total = Number.isFinite(slots) && slots > 0 ? slots : 10;
+          const pct = Number.isFinite(percentage) ? percentage : 0;
+          const filled = Math.min(total, Math.max(0, Math.round((pct / 100) * total)));
+          const empty = Math.max(0, total - filled);
+          return `[${'='.repeat(filled)}${' '.repeat(empty)}]`;
+        },
+
+        ingestArtifactSnapshot(snapshot) {
+          if (!snapshot || typeof snapshot !== 'object') return;
+          Object.entries(snapshot).forEach(([id, versions]) => {
+            if (!Array.isArray(versions)) return;
+            versions.forEach((entry) => this.upsertArtifactVersion(id, entry));
+          });
+        },
+
+        ingestArtifactUpdate(evt) {
+          const payload = evt.Payload || {};
+          const id = payload.id;
+          if (!id) return;
+          this.upsertArtifactVersion(id, {
+            ...payload,
+            agent: payload.agent || evt.Agent || 'unknown',
+            timestampMs: payload.timestampMs || evt.TimestampMs || Date.now()
+          });
+        },
+
+        upsertArtifactVersion(id, entry) {
+          if (!id || !entry) return;
+          const version = Number(entry.version || 0);
+          if (!version) return;
+          const artifact = this.artifacts[id] || {
+            id,
+            versions: [],
+            latestVersion: 0,
+            lastTimestamp: 0
+          };
+          const normalized = {
+            id,
+            version,
+            language: entry.language || 'text',
+            content: entry.content ?? '',
+            meta: entry.meta || null,
+            agent: entry.agent || 'unknown',
+            timestampMs: entry.timestampMs || Date.now()
+          };
+          const existingIndex = artifact.versions.findIndex(v => v.version === version);
+          if (existingIndex >= 0) {
+            artifact.versions[existingIndex] = normalized;
+          } else {
+            artifact.versions.push(normalized);
+          }
+          artifact.versions.sort((a, b) => a.version - b.version);
+          const prevLatest = artifact.latestVersion || 0;
+          artifact.latestVersion = Math.max(prevLatest, version);
+          artifact.lastTimestamp = Math.max(artifact.lastTimestamp || 0, normalized.timestampMs || 0);
+          this.artifacts[id] = artifact;
+          this.ensureArtifactOrder(id);
+
+          if (!this.selectedArtifactId) {
+            this.selectArtifact(id);
+            return;
+          }
+
+          if (this.selectedArtifactId === id) {
+            if (this.selectedArtifactVersion == null || this.selectedArtifactVersion >= prevLatest) {
+              this.selectedArtifactVersion = artifact.latestVersion;
+              this.$nextTick(() => this.highlightArtifact());
+            }
+          }
+        },
+
+        ensureArtifactOrder(id) {
+          if (!id) return;
+          if (this.artifactOrder[id]) return;
+          this.artifactOrder[id] = this.nextArtifactOrder;
+          this.nextArtifactOrder += 1;
+        },
+
+        sortedArtifacts() {
+          return Object.values(this.artifacts).sort((a, b) => {
+            const timeA = a.lastTimestamp || 0;
+            const timeB = b.lastTimestamp || 0;
+            if (timeA !== timeB) return timeB - timeA;
+            const orderA = this.artifactOrder[a.id] || Number.MAX_SAFE_INTEGER;
+            const orderB = this.artifactOrder[b.id] || Number.MAX_SAFE_INTEGER;
+            if (orderA !== orderB) return orderA - orderB;
+            return String(a.id).localeCompare(String(b.id));
+          });
+        },
+
+        filteredArtifacts() {
+          const query = (this.artifactSearch || '').toLowerCase().trim();
+          const list = this.sortedArtifacts();
+          if (!query) return list;
+          return list.filter((artifact) => {
+            const id = (artifact.id || '').toLowerCase();
+            const name = this.artifactDisplayName(artifact.id).toLowerCase();
+            return id.includes(query) || name.includes(query);
+          });
+        },
+
+        selectArtifact(id) {
+          if (!id) return;
+          this.selectedArtifactId = id;
+          const artifact = this.artifacts[id];
+          if (artifact && artifact.latestVersion) {
+            this.selectedArtifactVersion = artifact.latestVersion;
+          } else {
+            this.selectedArtifactVersion = null;
+          }
+          this.$nextTick(() => this.highlightArtifact());
+        },
+
+        selectArtifactVersion(version) {
+          if (!version) return;
+          this.selectedArtifactVersion = version;
+          this.$nextTick(() => this.highlightArtifact());
+        },
+
+        currentArtifact() {
+          if (!this.selectedArtifactId) return null;
+          return this.artifacts[this.selectedArtifactId] || null;
+        },
+
+        artifactVersionList() {
+          const artifact = this.currentArtifact();
+          if (!artifact) return [];
+          return artifact.versions || [];
+        },
+
+        currentArtifactVersion() {
+          const artifact = this.currentArtifact();
+          if (!artifact) return null;
+          const version = this.selectedArtifactVersion || artifact.latestVersion;
+          if (!version) return null;
+          return artifact.versions.find(v => v.version === version) || null;
+        },
+
+        artifactDisplayName(id) {
+          if (!id) return 'Unknown artifact';
+          const parts = String(id).split('::');
+          return parts.length > 1 ? parts[1] : id;
+        },
+
+        artifactAgentName(id) {
+          if (!id) return '';
+          const parts = String(id).split('::');
+          if (parts.length < 2) return '';
+          const agent = parts[0] || '';
+          return this.shortAgent(agent);
+        },
+
+        artifactLanguageLabel(entry) {
+          if (!entry || !entry.language) return 'TEXT';
+          return entry.language.toUpperCase();
+        },
+
+        normalizeLanguage(lang) {
+          const value = (lang || '').toLowerCase().trim();
+          if (!value) return 'plaintext';
+          if (value === 'js') return 'javascript';
+          if (value === 'text') return 'plaintext';
+          return value;
+        },
+
+        renderArtifactContent(entry) {
+          if (!entry) return '';
+          const lang = this.normalizeLanguage(entry.language);
+          const content = entry.content ?? '';
+          return `<pre><code class="hljs language-${lang}">${this.escapeHtml(String(content))}</code></pre>`;
+        },
+
+        highlightArtifact() {
+          if (!window.hljs) {
+            if (!this._highlightRetry) this._highlightRetry = 0;
+            if (this._highlightRetry < 8) {
+              this._highlightRetry += 1;
+              setTimeout(() => this.highlightArtifact(), 150);
+            }
+            return;
+          }
+          if (!this._hljsRegistered) {
+            this.registerHighlight();
+            return;
+          }
+          this._highlightRetry = 0;
+          const container = this.$refs.artifactCode;
+          if (!container) return;
+          const code = container.querySelector('code');
+          if (!code) return;
+          try {
+            code.removeAttribute('data-highlighted');
+            window.hljs.highlightElement(code);
+          } catch (err) {
+            console.warn('[viewer] highlight error', err);
+          }
+        },
+
+        registerHighlight() {
+          if (!window.hljs) {
+            if (!this._registerRetry) this._registerRetry = 0;
+            if (this._registerRetry < 12) {
+              this._registerRetry += 1;
+              setTimeout(() => this.registerHighlight(), 150);
+            }
+            return;
+          }
+          if (this._hljsRegistered) return;
+          const hasJs = typeof window.hljsDefineJavascript === 'function';
+          const hasJson = typeof window.hljsDefineJson === 'function';
+          const hasPlain = typeof window.hljsDefinePlaintext === 'function';
+          if (!hasJs && !hasJson && !hasPlain) {
+            if (!this._registerRetry) this._registerRetry = 0;
+            if (this._registerRetry < 12) {
+              this._registerRetry += 1;
+              setTimeout(() => this.registerHighlight(), 150);
+            }
+            return;
+          }
+          if (hasJs) window.hljs.registerLanguage('javascript', window.hljsDefineJavascript);
+          if (hasJson) window.hljs.registerLanguage('json', window.hljsDefineJson);
+          if (hasPlain) window.hljs.registerLanguage('plaintext', window.hljsDefinePlaintext);
+          this._hljsRegistered = true;
+          this._registerRetry = 0;
+          this.$nextTick(() => this.highlightArtifact());
+        },
+
+        clearAll() {
+          this.events = [];
+          this.seen = new Set();
+          this.agentMap = {};
+          this.messageKeyCache = {};
+          this.agentContainers = {};
+          this.agentOrder = {};
+          this.nextAgentOrder = 1;
+          this.artifacts = {};
+          this.artifactOrder = {};
+          this.nextArtifactOrder = 1;
+          this.selectedArtifactId = null;
+          this.selectedArtifactVersion = null;
+        },
+
+        initAutoAnimate(el) {
+          if (!el || typeof autoAnimate !== 'function') return;
+          if (this.animatedElements.has(el)) return;
+          autoAnimate(el, { duration: 380, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)' });
+          this.animatedElements.add(el);
+        },
+
+        ensureAutoAnimate() {
+          this.$nextTick(() => {
+            document.querySelectorAll('.agent-message-list, .feed-list, .artifact-list').forEach((el) => this.initAutoAnimate(el));
+          });
+        },
+
+        scrollFeedToBottom() {
+          if (!this.autoScrollFeed) return;
+          this.$nextTick(() => {
+            const feed = this.$refs.feed;
+            if (!feed) return;
+            const top = feed.scrollHeight;
+            if (typeof feed.scrollTo === 'function') {
+              feed.scrollTo({ top, behavior: 'smooth' });
+            } else {
+              feed.scrollTop = top;
+            }
+          });
+        },
+
+        scrollAgentsToBottom() {
+          if (!this.autoScrollAgents) return;
+          this.$nextTick(() => {
+            document.querySelectorAll('.agent-messages').forEach(el => {
+              el.scrollTop = el.scrollHeight;
+            });
+          });
+        },
+
+        findAgentContainer(agentKey) {
+          if (!agentKey) return null;
+          const cached = this.agentContainers[agentKey];
+          if (cached && document.body.contains(cached)) return cached;
+          const nodes = document.querySelectorAll('.agent-messages');
+          for (const el of nodes) {
+            if (el.dataset && el.dataset.agent === agentKey) return el;
+          }
+          return null;
+        },
+
+        registerAgentContainer(agentKey, el) {
+          if (!agentKey || !el) return;
+          this.agentContainers[agentKey] = el;
+        },
+
+        captureAgentScroll(agentKey) {
+          const el = this.findAgentContainer(agentKey);
+          if (!el) return null;
+          return {
+            top: el.scrollTop,
+            height: el.scrollHeight,
+            clientHeight: el.clientHeight,
+            nearBottom: this.isNearBottom(el)
+          };
+        },
+
+        restoreAgentScroll(agentKey, scrollState) {
+          if (!scrollState) return;
+          this.$nextTick(() => {
+            requestAnimationFrame(() => {
+              const el = this.findAgentContainer(agentKey);
+              if (!el) return;
+              if (this.autoScrollAgents) {
+                this.scrollContainerToLatestImportant(el);
+                return;
+              }
+              const newHeight = el.scrollHeight;
+              const delta = newHeight - scrollState.height;
+              const maxTop = Math.max(0, newHeight - el.clientHeight);
+              const nextTop = Math.min(maxTop, Math.max(0, scrollState.top + delta));
+              el.scrollTop = nextTop;
+            });
+          });
+        },
+
+        scrollContainerToLatestImportant(container) {
+          const candidates = container.querySelectorAll('.message.role-tool, .message.role-assistant');
+          const lastCandidate = candidates.length ? candidates[candidates.length - 1] : null;
+          const fallback = container.querySelector('.message:last-child');
+          const target = lastCandidate || fallback;
+          if (!target) return;
+          this.scrollContainerToMessage(container, target);
+        },
+
+        scrollContainerToMessage(container, messageEl) {
+          const offset = this.getOffsetTopWithinContainer(messageEl, container);
+          const targetTop = offset - (container.clientHeight - messageEl.offsetHeight) + 12;
+          const maxTop = Math.max(0, container.scrollHeight - container.clientHeight);
+          const nextTop = Math.min(maxTop, Math.max(0, targetTop));
+          if (typeof container.scrollTo === 'function') {
+            container.scrollTo({ top: nextTop, behavior: 'smooth' });
+          } else {
+            container.scrollTop = nextTop;
+          }
+        },
+
+        getOffsetTopWithinContainer(el, container) {
+          let offset = 0;
+          let node = el;
+          while (node && node !== container) {
+            offset += node.offsetTop || 0;
+            node = node.offsetParent;
+          }
+          return offset;
+        },
+
+        isNearBottom(el, threshold = 64) {
+          const remaining = el.scrollHeight - el.scrollTop - el.clientHeight;
+          return remaining <= threshold;
+        },
+
+        sortedTopics() {
+          return Object.keys(this.topicFilters).sort();
+        },
+
+        filteredEvents() {
+          const active = Object.entries(this.topicFilters).filter(([_, v]) => v).map(([k]) => k);
+          return this.events.filter(e => active.length === 0 || active.includes(e.Topic || e.Type));
+        },
+
+        sortedAgents() {
+          return Object.values(this.agentMap).sort((a, b) => {
+            const orderA = this.agentOrder[a.key] ?? Number.MAX_SAFE_INTEGER;
+            const orderB = this.agentOrder[b.key] ?? Number.MAX_SAFE_INTEGER;
+            if (orderA !== orderB) return orderA - orderB;
+            return String(a.key).localeCompare(String(b.key));
+          });
+        },
+
+        ensureAgentOrder(agentKey) {
+          if (!agentKey) return;
+          if (this.agentOrder[agentKey]) return;
+          this.agentOrder[agentKey] = this.nextAgentOrder;
+          this.nextAgentOrder += 1;
+        },
+
+        agentCount() {
+          return Object.keys(this.agentMap).length;
+        },
+
+        shortAgent(agentKey) {
+          if (!agentKey) return 'Unknown Agent';
+          const parts = String(agentKey).split('/').filter(Boolean);
+          return parts.length ? parts[parts.length - 1] : String(agentKey);
+        },
+
+        formatTime(timestamp) {
+          if (!timestamp) return 'n/a';
+          return new Date(timestamp).toLocaleTimeString();
+        },
+
+        time(evt) {
+          return new Date(evt.TimestampMs || Date.now()).toLocaleTimeString();
+        },
+
+        roleLabel(role) {
+          if (!role) return 'Unknown';
+          const normalized = String(role).toLowerCase();
+          if (normalized === 'assistant') return 'Assistant';
+          if (normalized === 'user') return 'User';
+          if (normalized === 'system') return 'System';
+          if (normalized === 'tool') return 'Tool';
+          return role;
+        },
+
+        roleClass(role) {
+          return (role || 'unknown').toString().toLowerCase();
+        },
+
+        isCoreRole(role) {
+          const normalized = (role || '').toString().toLowerCase();
+          return normalized === 'assistant' || normalized === 'tool';
+        },
+
+        findCoreInsertIndex(context) {
+          for (let i = context.length - 1; i >= 0; i -= 1) {
+            if (this.isCoreRole(context[i] && context[i].role)) return i + 1;
+          }
+          return context.length;
+        },
+
+        escapeHtml(str) {
+          return String(str).replace(/[&<>"]/g, (ch) => {
+            switch (ch) {
+              case '&': return '&amp;';
+              case '<': return '&lt;';
+              case '>': return '&gt;';
+              case '"': return '&quot;';
+              default: return ch;
+            }
+          });
+        },
+
+        renderContent(content) {
+          if (content == null) return '';
+          if (typeof content === 'string') {
+            return `<div class="part text">${this.escapeHtml(content)}</div>`;
+          }
+          if (Array.isArray(content)) {
+            return content.map(part => this.renderPart(part)).join('');
+          }
+          if (typeof content === 'object') {
+            return `<div class="part text">${this.escapeHtml(JSON.stringify(content, null, 2))}</div>`;
+          }
+          return `<div class="part text">${this.escapeHtml(String(content))}</div>`;
+        },
+
+        renderPart(part) {
+          if (!part || typeof part !== 'object') {
+            return `<div class="part text">${this.escapeHtml(String(part))}</div>`;
+          }
+
+          if (part.type === 'text') {
+            return `<div class="part text">${this.escapeHtml(part.text || '')}</div>`;
+          }
+
+          if (part.type === 'image_url') {
+            const url = part.url || (part.image_url && part.image_url.url) || '';
+            const safeUrl = this.escapeHtml(url);
+            return `<div class="part image"><img src="${safeUrl}" alt="image" /></div>`;
+          }
+
+          return `<div class="part text">[${this.escapeHtml(part.type || 'unknown')}]</div>`;
+        },
+
+        normalizeMessage(message, agentKey, mode) {
+          const key = agentKey || 'unknown_agent';
+          if (message == null) return this.decorateMessage({ role: 'unknown', content: '' }, key, mode);
+          if (typeof message !== 'object') return this.decorateMessage({ role: 'assistant', content: message }, key, mode);
+          const role = message.role || message.Role || 'unknown';
+          const content = message.content ?? message.Content ?? '';
+          const toolCalls = message.toolCalls || message.ToolCalls || null;
+          const reasoning = message.reasoning || message.Reasoning || null;
+          const reasoningDetails = message.reasoningDetails || message.reasoning_details || message.ReasoningDetails || null;
+          const id = message.id || message.Id || null;
+          return this.decorateMessage({ role, content, toolCalls, reasoning, reasoningDetails, id }, key, mode);
+        },
+
+        decorateMessage(normalized, agentKey, mode) {
+          const id = normalized.id || normalized.Id || null;
+          const messageKey = this.assignMessageKey(agentKey, normalized, mode);
+          return {
+            ...normalized,
+            id,
+            _key: messageKey,
+            _localId: id ? null : this.localMessageId++
+          };
+        },
+
+        beginSnapshot(agentKey) {
+          const cache = this.getAgentKeyCache(agentKey);
+          cache.usage = new Map();
+        },
+
+        getAgentKeyCache(agentKey) {
+          if (!this.messageKeyCache[agentKey]) {
+            this.messageKeyCache[agentKey] = { pools: new Map(), usage: new Map(), counter: 1 };
+          }
+          return this.messageKeyCache[agentKey];
+        },
+
+        assignMessageKey(agentKey, normalized, mode) {
+          const id = normalized.id || normalized.Id || null;
+          if (id) return id;
+          const fingerprint = this.messageFingerprint(normalized);
+          const cache = this.getAgentKeyCache(agentKey);
+          if (mode === 'append') {
+            const key = this.buildMessageKey(fingerprint, cache);
+            const pool = cache.pools.get(fingerprint) || [];
+            pool.push(key);
+            cache.pools.set(fingerprint, pool);
+            return key;
+          }
+          const usage = cache.usage.get(fingerprint) || 0;
+          const pool = cache.pools.get(fingerprint) || [];
+          let key = pool[usage];
+          if (!key) {
+            key = this.buildMessageKey(fingerprint, cache);
+            pool.push(key);
+            cache.pools.set(fingerprint, pool);
+          }
+          cache.usage.set(fingerprint, usage + 1);
+          return key;
+        },
+
+        buildMessageKey(fingerprint, cache) {
+          const hash = this.hashString(fingerprint);
+          const key = `${hash}-${cache.counter}`;
+          cache.counter += 1;
+          return key;
+        },
+
+        messageFingerprint(normalized) {
+          const role = normalized.role || 'unknown';
+          const content = normalized.content ?? null;
+          const toolCalls = normalized.toolCalls ?? null;
+          const reasoning = normalized.reasoning ?? null;
+          const reasoningDetails = normalized.reasoningDetails ?? null;
+          return JSON.stringify({ role, content, toolCalls, reasoning, reasoningDetails });
+        },
+
+        hashString(str) {
+          let hash = 2166136261;
+          for (let i = 0; i < str.length; i += 1) {
+            hash ^= str.charCodeAt(i);
+            hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
+          }
+          return (hash >>> 0).toString(36);
+        },
+
+        formatArgs(args) {
+          if (args == null) return '';
+          if (typeof args !== 'string') return JSON.stringify(args, null, 2);
+          const trimmed = args.trim();
+          if (!trimmed) return '';
+          if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+            try {
+              return JSON.stringify(JSON.parse(trimmed), null, 2);
+            } catch (err) {
+              return args;
+            }
+          }
+          return args;
+        },
+
+        formatReasoningDetails(details) {
+          if (details == null) return '';
+          if (typeof details === 'string') return details;
+          if (typeof details === 'object') return JSON.stringify(details, null, 2);
+          return String(details);
+        },
+
+        prettyWithImages(obj) {
+          const escapeHtml = (str) => this.escapeHtml(str);
+
+          const isImageString = (str) => {
+            if (typeof str !== 'string') return false;
+            if (str.startsWith('data:image/')) return true;
+            const lower = str.toLowerCase();
+            if (lower.startsWith('http://') || lower.startsWith('https://')) {
+              return /(\.png|\.jpg|\.jpeg|\.gif|\.webp)(\?|#|$)/.test(lower);
+            }
+            return false;
+          };
+
+          const truncate = (str, max) => {
+            if (str.length <= max) return str;
+            return str.slice(0, max) + '...';
+          };
+
+          const renderValue = (value, indent) => {
+            const pad = '  '.repeat(indent);
+
+            if (value === null) {
+              return 'null';
+            }
+
+            if (Array.isArray(value)) {
+              if (value.length === 0) return '[]';
+              const inner = value.map(v => pad + '  ' + renderValue(v, indent + 1)).join('\n');
+              return '[\n' + inner + '\n' + pad + ']';
+            }
+
+            if (typeof value === 'object') {
+              const keys = Object.keys(value || {});
+              if (keys.length === 0) return '{}';
+              const inner = keys.map(k => {
+                const keyHtml = '&quot;' + escapeHtml(k) + '&quot;';
+                const valHtml = renderValue(value[k], indent + 1);
+                return pad + '  ' + keyHtml + ': ' + valHtml;
+              }).join('\n');
+              return '{\n' + inner + '\n' + pad + '}';
+            }
+
+            if (typeof value === 'string') {
+              if (isImageString(value)) {
+                const truncated = truncate(value, 128);
+                const safeTrunc = escapeHtml(truncated);
+                const safeUrl = escapeHtml(value);
+                return '&quot;' + safeTrunc + '&quot; ' +
+                  '<span class="image-inline"><img src="' + safeUrl + '" /></span>';
+              }
+              return '&quot;' + escapeHtml(value) + '&quot;';
+            }
+
+            return String(value);
+          };
+
+          try {
+            return renderValue(obj, 0);
+          } catch (err) {
+            return escapeHtml(JSON.stringify(obj, null, 2));
+          }
+        }
+      };
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+{
+  "name": "telemetry-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local collector + viewer for Supermarket Sim telemetry",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

@@ -1,0 +1,22 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://AgenticCore/Vision/TargetOverlayDisplay.cs" id="1_overlay"]
+
+[node name="TargetOverlayDisplay" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("1_overlay")
+FontSize = 12
+LineWidth = 2.0
+BoxPadding = 6.0
+LabelPadding = 3.0
+FallbackBoxSize = 50.0
+MaxVisibleDistance = 50.0
+ShowAddress = true
+ShowObjectType = false
+
