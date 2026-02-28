@@ -67,6 +67,7 @@ public class AgenticEntity {
 
 	// Pluggable LLM client (defaults to OpenRouter client)
 	private LLMClient _llmClient;
+	private bool _llmClientExternallyProvided;
 
 	// Events for timing and lifecycle
 	public event Action<bool> ThinkingFinished;
@@ -123,6 +124,7 @@ public class AgenticEntity {
 
 	public AgenticEntity(IAgenticBehavior behavior, LLMClient llmClient = null) {
 		_behavior = behavior;
+		_llmClientExternallyProvided = llmClient != null;
 		_llmClient = llmClient ?? CreateConfiguredLLMClient();
 		_initialStartDelay = Config.InitialStartDelay;
 		ThinkingCompleted = new TaskCompletionSource<bool>();
@@ -131,11 +133,36 @@ public class AgenticEntity {
 
 		_agentLabel = ResolveAgentLabel(behavior);
 		_telemetry = TelemetryClient.Get();
+
+		AgenticConfig.ConfigChanged += OnConfigChanged;
 	}
 
 	// Allow swapping the LLM client at runtime (e.g., tests)
 	public void SetLLMClient(LLMClient client) {
+		_llmClientExternallyProvided = client != null;
 		_llmClient = client ?? CreateConfiguredLLMClient();
+	}
+
+	/// <summary>
+	/// Unsubscribe from config changes. Call when this entity is no longer needed.
+	/// </summary>
+	public void Dispose() {
+		AgenticConfig.ConfigChanged -= OnConfigChanged;
+	}
+
+	private static readonly HashSet<string> LlmConfigKeys = new(StringComparer.OrdinalIgnoreCase) {
+		"llm_backend", "LLM_BACKEND",
+		"MODEL", "TEMPERATURE",
+		"OPEN_ROUTER_API_KEY",
+		"CHUTES_API_KEY", "CHUTES_BASE_URL", "CHUTES_MODEL", "CHUTES_AUTH_MODE", "CHUTES_MAX_TOKENS",
+		"CODEX_MODEL",
+	};
+
+	private void OnConfigChanged(string key, string value) {
+		if (_llmClientExternallyProvided) return;
+		if (!LlmConfigKeys.Contains(key)) return;
+		GD.Print($"[AgenticEntity] LLM config key '{key}' changed, rebuilding LLM client.");
+		_llmClient = CreateConfiguredLLMClient();
 	}
 
 	private static LLMClient CreateConfiguredLLMClient() {

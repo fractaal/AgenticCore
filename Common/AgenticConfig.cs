@@ -7,6 +7,11 @@ public static class AgenticConfig {
 		new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 	private const string SettingsFilePath = "user://AgenticConfig.txt";
 
+	/// <summary>
+	/// Fired after any call to SetValue(). Subscribers receive the changed key and new value.
+	/// </summary>
+	public static event Action<string, string> ConfigChanged;
+
 	static AgenticConfig() {
 		LoadSettings();
 	}
@@ -134,8 +139,10 @@ public static class AgenticConfig {
 			return;
 		}
 
-		settings[key.Trim()] = value?.Trim() ?? string.Empty;
+		var trimmedKey = key.Trim();
+		settings[trimmedKey] = value?.Trim() ?? string.Empty;
 		if (persist) SaveSettings();
+		ConfigChanged?.Invoke(trimmedKey, settings[trimmedKey]);
 	}
 
 	private static void SaveSettings() {
