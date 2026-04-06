@@ -28,6 +28,13 @@ public partial class TelemetryClient : Node {
 	private int _maxSendsPerFrame = 4;
 	private int _inflight;
 
+	// Circuit breaker: stop spamming a dead endpoint
+	private int _consecutiveFailures;
+	private const int CircuitBreakerThreshold = 5;
+	private double _circuitOpenUntilSec;
+	private const double CircuitRetryIntervalSec = 30.0;
+	private bool CircuitOpen => _consecutiveFailures >= CircuitBreakerThreshold;
+
 	public static TelemetryClient Instance => _instance;
 
 	/// <summary>
@@ -77,6 +84,19 @@ public partial class TelemetryClient : Node {
 
 	public override void _Process(double delta) {
 		if (!_enabled) return;
+
+		// Circuit breaker: skip sending when the endpoint is consistently unreachable
+		if (CircuitOpen) {
+			double now = Time.GetTicksUsec() / 1_000_000.0;
+			if (now < _circuitOpenUntilSec) {
+				// Drop queued events while circuit is open — they'd just pile up
+				while (_outbound.TryDequeue(out _)) { }
+				return;
+			}
+			// Probe: allow one send to check if the endpoint is back
+			GD.Print("[TelemetryHTTP] Circuit half-open, probing endpoint...");
+		}
+
 		int sent = 0;
 		while (sent < _maxSendsPerFrame && _outbound.TryDequeue(out var json)) {
 			if (Interlocked.CompareExchange(ref _inflight, 0, 0) >= MaxInflight) {
@@ -91,7 +111,7 @@ public partial class TelemetryClient : Node {
 	}
 
 	public void Enqueue(string type, string agent, object payload, string topic = null) {
-		if (!_enabled) return;
+		if (!_enabled || CircuitOpen) return;
 		if (_outbound.Count >= MaxQueuedEvents) _outbound.TryDequeue(out _); // drop oldest
 
 		var envelope = new TelemetryEnvelope {
@@ -110,9 +130,21 @@ public partial class TelemetryClient : Node {
 		try {
 			var content = new StringContent(json, Encoding.UTF8, "application/json");
 			await Http.PostAsync(_endpoint, content).ConfigureAwait(false);
+			// Success: reset circuit breaker
+			if (_consecutiveFailures > 0) {
+				GD.Print("[TelemetryHTTP] Endpoint reachable again, circuit closed.");
+				_consecutiveFailures = 0;
+			}
 		}
 		catch (Exception e) {
-			GD.PrintErr($"[TelemetryHTTP] POST failed: {e.Message}");
+			int failures = Interlocked.Increment(ref _consecutiveFailures);
+			if (failures == CircuitBreakerThreshold) {
+				_circuitOpenUntilSec = Time.GetTicksUsec() / 1_000_000.0 + CircuitRetryIntervalSec;
+				GD.PrintErr($"[TelemetryHTTP] {failures} consecutive failures — circuit OPEN, " +
+					$"pausing telemetry for {CircuitRetryIntervalSec}s. Last error: {e.Message}");
+			} else if (failures < CircuitBreakerThreshold) {
+				GD.PrintErr($"[TelemetryHTTP] POST failed ({failures}/{CircuitBreakerThreshold}): {e.Message}");
+			}
 		}
 		finally {
 			Interlocked.Decrement(ref _inflight);
