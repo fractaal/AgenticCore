@@ -135,21 +135,21 @@ public sealed class OpenRouterLLMClient : LLMClient {
 		var parseResult = await ParseCompletionResponseAsync(response.Content).ConfigureAwait(false);
 		var message = parseResult?.Message;
 		if (parseResult?.Usage != null) {
-			MainThread.Post(() => Economics.Get()?.RecordUsage(parseResult.Usage, parseResult.CacheDiscount));
+			MainThread.Enqueue(() => Economics.Get()?.RecordUsage(parseResult.Usage, parseResult.CacheDiscount));
 		}
 		if (message != null) {
 			GD.Print("[OpenRouterLLMClient] Response parsed successfully.");
 
 			if (message.ToolCalls != null && message.ToolCalls.Count > 0) {
 				GD.Print($"[OpenRouterLLMClient] LLM wants to perform {message.ToolCalls.Count} tool calls.");
-				MainThread.Post(() => onToolCalls?.Invoke(message.ToolCalls, message));
+				MainThread.Enqueue(() => onToolCalls?.Invoke(message.ToolCalls, message));
 			} else {
 				GD.Print("[OpenRouterLLMClient] LLM has finished responding.");
-				MainThread.Post(() => onComplete?.Invoke(message));
+				MainThread.Enqueue(() => onComplete?.Invoke(message));
 			}
 		} else {
 			GD.PrintErr("[OpenRouterLLMClient] No choices in response");
-			MainThread.Post(() => onComplete?.Invoke(new LLMMessage { Role = "assistant", Content = "" }));
+			MainThread.Enqueue(() => onComplete?.Invoke(new LLMMessage { Role = "assistant", Content = "" }));
 		}
 	}
 

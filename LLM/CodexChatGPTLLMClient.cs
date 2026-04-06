@@ -88,11 +88,11 @@ public sealed class CodexChatGPTLLMClient : LLMClient {
 
 		if (toolCalls.Count > 0) {
 			message.ToolCalls = toolCalls;
-			MainThread.Post(() => onToolCalls?.Invoke(toolCalls, message));
+			MainThread.Enqueue(() => onToolCalls?.Invoke(toolCalls, message));
 			return;
 		}
 
-		MainThread.Post(() => onComplete?.Invoke(message));
+		MainThread.Enqueue(() => onComplete?.Invoke(message));
 	}
 
 	private async Task<HttpResponseMessage> SendRequestAsync(CodexAuthState auth, string jsonPayload) {

@@ -97,16 +97,16 @@ public sealed class ChutesLLMClient : LLMClient {
 		using var responseDoc = await JsonDocument.ParseAsync(stream).ConfigureAwait(false);
 		if (TryParseAssistantMessage(responseDoc.RootElement, out var message) && message != null) {
 			if (message.ToolCalls != null && message.ToolCalls.Count > 0) {
-				MainThread.Post(() => onToolCalls?.Invoke(message.ToolCalls, message));
+				MainThread.Enqueue(() => onToolCalls?.Invoke(message.ToolCalls, message));
 				return;
 			}
 
-			MainThread.Post(() => onComplete?.Invoke(message));
+			MainThread.Enqueue(() => onComplete?.Invoke(message));
 			return;
 		}
 
 		GD.PrintErr("[ChutesLLMClient] No choices in response");
-		MainThread.Post(() => onComplete?.Invoke(new LLMMessage { Role = "assistant", Content = "" }));
+		MainThread.Enqueue(() => onComplete?.Invoke(new LLMMessage { Role = "assistant", Content = "" }));
 	}
 
 	private static bool TryParseAssistantMessage(JsonElement root, out LLMMessage message) {
