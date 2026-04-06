@@ -8,83 +8,95 @@ using Godot;
 /// Call TryInitFromCurrentThread() once on the Godot main thread (e.g., during startup).
 /// </summary>
 public static partial class MainThread {
-    private static SynchronizationContext _ctx;
-    private static ConcurrentQueue<Action> _queue = new();
-    private static Pump _pump; // drains _queue on idle
+	private static SynchronizationContext _ctx;
+	private static ConcurrentQueue<Action> _queue = new();
+	private static bool _pumpConnected;
 
-    /// <summary>
-    /// Capture SynchronizationContext.Current and ensure a pump exists on the scene tree.
-    /// Safe to call multiple times; first non-null capture wins.
-    /// </summary>
-    public static void TryInitFromCurrentThread() {
-        if (_ctx == null) {
-            var current = SynchronizationContext.Current;
-            if (current != null) Interlocked.CompareExchange(ref _ctx, current, null);
-        }
+	// Drain budget per frame
+	private const int MaxActionsPerTick = 64;
+	private const double MaxMillisPerTick = 2.0;
 
-        // Ensure a pump node exists (main thread only)
-        var tree = Engine.GetMainLoop() as SceneTree;
-        if (tree != null && _pump == null) {
-            var p = new Pump();
-            _pump = p;
-            tree.Root.AddChild(p);
-        }
-    }
+	// Monitoring
+	private static int _totalEnqueued;
+	private static int _totalDrained;
+	private static int _peakQueueDepth;
+	private static double _nextLogTimeSec;
+	private const double LogIntervalSec = 10.0;
 
-    /// <summary>
-    /// Post an action via SynchronizationContext immediately (no coalescing).
-    /// </summary>
-    public static void Post(Action action) {
-        if (action == null) return;
-        var ctx = _ctx;
-        if (ctx != null) { ctx.Post(_ => action(), null); return; }
-        // Fallback: no captured context; execute inline (best effort)
-        action();
-    }
+	/// <summary>
+	/// Capture SynchronizationContext.Current and connect the queue drain to SceneTree.ProcessFrame.
+	/// Safe to call multiple times; first successful setup wins.
+	/// </summary>
+	public static void TryInitFromCurrentThread() {
+		if (_ctx == null) {
+			var current = SynchronizationContext.Current;
+			if (current != null) Interlocked.CompareExchange(ref _ctx, current, null);
+		}
 
-    /// <summary>
-    /// Enqueue an action to be executed on the next idle ticks by the pump.
-    /// Coalesces many background events into one or a few per-frame batches.
-    /// Guarantees delivery even if the pump isn't ready yet by falling back.
-    /// </summary>
-    public static void Enqueue(Action action) {
-        if (action == null) return;
-        // If no SynchronizationContext yet, we cannot marshal or create a pump safely.
-        // Run inline as a last-resort to avoid dropping work.
-        if (_ctx == null && _pump == null) { action(); return; }
+		if (!_pumpConnected) {
+			var tree = Engine.GetMainLoop() as SceneTree;
+			if (tree != null) {
+				tree.ProcessFrame += DrainQueue;
+				_pumpConnected = true;
+				GD.Print("[MainThread] Pump connected via SceneTree.ProcessFrame signal.");
+			}
+		}
+	}
 
-        _queue.Enqueue(action);
+	/// <summary>
+	/// Post an action via SynchronizationContext immediately (no coalescing).
+	/// </summary>
+	public static void Post(Action action) {
+		if (action == null) return;
+		var ctx = _ctx;
+		if (ctx != null) { ctx.Post(_ => action(), null); return; }
+		action();
+	}
 
-        // If pump not created yet, ask main thread to create it.
-        if (_pump == null && _ctx != null) {
-            _ctx.Post(_ => EnsurePumpOnMainThread(), null);
-        }
-    }
+	/// <summary>
+	/// Enqueue an action to be executed on the next frame by the ProcessFrame drain.
+	/// Coalesces many background events into one or a few per-frame batches.
+	/// </summary>
+	public static void Enqueue(Action action) {
+		if (action == null) return;
 
-    private static void EnsurePumpOnMainThread() {
-        var tree = Engine.GetMainLoop() as SceneTree;
-        if (tree != null && _pump == null) {
-            var p = new Pump();
-            _pump = p;
-            tree.Root.AddChild(p);
-        }
-    }
+		// If pump isn't connected yet, fall back to Post() so we don't silently drop work.
+		if (!_pumpConnected) {
+			Post(action);
+			return;
+		}
 
-    private sealed partial class Pump : Node {
-        [Export] public int MaxActionsPerTick { get; set; } = 64; // cap per frame
-        [Export] public double MaxMillisPerTick { get; set; } = 2.0; // soft time budget
+		_queue.Enqueue(action);
+		Interlocked.Increment(ref _totalEnqueued);
+	}
 
-        public override void _Process(double delta) {
-            // Drain with simple action-count and time budgets
-            int processed = 0;
-            var startUsec = Time.GetTicksUsec();
-            while (processed < MaxActionsPerTick && _queue.TryDequeue(out var act)) {
-                try { act?.Invoke(); } catch (Exception e) { GD.PrintErr($"[MainThreadPump] Callback error: {e.Message}\n{e.StackTrace}"); }
-                processed++;
-                var elapsedMs = (Time.GetTicksUsec() - startUsec) / 1000.0;
-                if (elapsedMs >= MaxMillisPerTick) break;
-            }
-        }
-    }
+	private static void DrainQueue() {
+		int processed = 0;
+		var startUsec = Time.GetTicksUsec();
+		while (processed < MaxActionsPerTick && _queue.TryDequeue(out var action)) {
+			try {
+				action?.Invoke();
+			} catch (Exception e) {
+				GD.PrintErr($"[MainThread] Pump callback error: {e.Message}\n{e.StackTrace}");
+			}
+			processed++;
+			var elapsedMs = (Time.GetTicksUsec() - startUsec) / 1000.0;
+			if (elapsedMs >= MaxMillisPerTick) break;
+		}
+		_totalDrained += processed;
+
+		// Track peak queue depth (items remaining after drain)
+		int remaining = _queue.Count;
+		if (remaining > _peakQueueDepth) _peakQueueDepth = remaining;
+
+		// Periodic health log
+		double now = Time.GetTicksUsec() / 1_000_000.0;
+		if (now >= _nextLogTimeSec) {
+			GD.Print($"[MainThread] pump stats — enqueued: {_totalEnqueued}, drained: {_totalDrained}, " +
+				$"backlog: {remaining}, peak backlog: {_peakQueueDepth}, " +
+				$"this frame drained: {processed}, took: {(Time.GetTicksUsec() - startUsec) / 1000.0:F1}ms");
+			_peakQueueDepth = 0;
+			_nextLogTimeSec = now + LogIntervalSec;
+		}
+	}
 }
-
