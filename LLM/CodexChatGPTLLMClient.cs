@@ -51,7 +51,11 @@ public sealed class CodexChatGPTLLMClient : LLMClient {
 				await Send(postprocessedMessages, tools, onComplete, onToolCalls).ConfigureAwait(false);
 				GD.Print("[CodexChatGPTLLMClient] Send() completed successfully, breaking retry loop");
 				break;
-			} catch (Exception e) {
+			}
+			catch (LLMBadRequestException) {
+				throw; // Context corruption — don't retry, let caller handle
+			}
+			catch (Exception e) {
 				retryCount++;
 				GD.PrintErr($"[CodexChatGPTLLMClient] Attempt #{retryCount} failed: {e.Message}");
 				await Task.Delay(5000).ConfigureAwait(false);
@@ -76,9 +80,16 @@ public sealed class CodexChatGPTLLMClient : LLMClient {
 		}
 
 		if (!response.IsSuccessStatusCode) {
+			int statusCode = (int)response.StatusCode;
 			string errorContent = await ReadLimitedContentAsync(response.Content, MaxErrorBodyBytes).ConfigureAwait(false);
+
+			if (statusCode == 400) {
+				throw new LLMBadRequestException(statusCode, errorContent,
+					$"Bad Request (400): context is likely corrupted. Content: {errorContent}");
+			}
+
 			throw new HttpRequestException(
-				$"Request failed with status {(int)response.StatusCode} {response.StatusCode}. Content: {errorContent}");
+				$"Request failed with status {statusCode} {response.StatusCode}. Content: {errorContent}");
 		}
 
 		using var responseDoc = await ReadResponseDocumentAsync(response).ConfigureAwait(false);

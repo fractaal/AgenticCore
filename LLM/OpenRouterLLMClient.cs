@@ -76,6 +76,9 @@ public sealed class OpenRouterLLMClient : LLMClient {
 				GD.Print("[OpenRouterLLMClient] Send() completed successfully, breaking retry loop");
 				break;
 			}
+			catch (LLMBadRequestException) {
+				throw; // Context corruption — don't retry, let caller handle
+			}
 			catch (Exception e) {
 				retryCount++;
 				GD.PrintErr($"[OpenRouterLLMClient] Attempt #{retryCount} failed with error: {e.Message}");
@@ -123,11 +126,20 @@ public sealed class OpenRouterLLMClient : LLMClient {
 			$"[OpenRouterLLMClient] HTTP response received with status: {(int)response.StatusCode} {response.StatusCode}");
 
 		if (!response.IsSuccessStatusCode) {
+			int statusCode = (int)response.StatusCode;
 			string errorContent = await ReadLimitedContentAsync(response.Content, MaxErrorBodyBytes).ConfigureAwait(false);
 			GD.PrintErr(
-				$"[OpenRouterLLMClient] Request failed with status {(int)response.StatusCode} {response.StatusCode}. Reason: {response.ReasonPhrase}. Content: {errorContent}");
+				$"[OpenRouterLLMClient] Request failed with status {statusCode} {response.StatusCode}. Reason: {response.ReasonPhrase}. Content: {errorContent}");
+
+			// HTTP 400 = bad request payload (context corruption, malformed messages, etc.)
+			// NOT the same as 429 (rate limit) or 5xx (server error) which are transient.
+			if (statusCode == 400) {
+				throw new LLMBadRequestException(statusCode, errorContent,
+					$"Bad Request (400): context is likely corrupted. Reason: {response.ReasonPhrase}. Content: {errorContent}");
+			}
+
 			throw new HttpRequestException(
-				$"Request failed with status {(int)response.StatusCode} {response.StatusCode}. " +
+				$"Request failed with status {statusCode} {response.StatusCode}. " +
 				$"Reason: {response.ReasonPhrase}. Content: {errorContent}");
 		}
 

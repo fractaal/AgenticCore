@@ -97,6 +97,7 @@ public class AgenticEntity {
 
 	// Per-cycle observation state
 	private bool _sawToolCallsThisCycle = false;
+	private bool _contextResetAttemptedThisCycle = false;
 	private bool _compactionPending = false;
 	private bool _compactionInProgress = false;
 
@@ -197,6 +198,7 @@ public class AgenticEntity {
 		_hasNotifiedLLMIsTakingTooLong = false;
 		_stopRequested = false; // Reset stop request for new cycle
 		_stopCompleted = null; // Clear any pending stop completion
+		_contextResetAttemptedThisCycle = false;
 		ThinkingCompleted = new TaskCompletionSource<bool>();
 
 		_behavior.OnThinkingStarted();
@@ -342,6 +344,9 @@ public class AgenticEntity {
 			var summaryMessage = await RequestCompactionSummaryAsync(transcript);
 			summaryText = ExtractTextFromContent(summaryMessage?.Content);
 		} catch (Exception e) {
+			// Note: LLMBadRequestException (400) during compaction lands here too. This is fine —
+			// the compaction flow clears PersistentContext below regardless, so the corrupted context
+			// gets replaced with "Summary unavailable." which is a valid recovery.
 			GD.PrintErr($"[AgenticEntity] Compaction failed: {e.Message}");
 		}
 
@@ -565,12 +570,17 @@ public class AgenticEntity {
 		}, topic: "llm_send");
 
 		// Send to LLM via pluggable client
-		await _llmClient.SendWithIndefiniteRetry(
-			postprocessedContext,
-			tools,
-			OnLLMResponseComplete,
-			OnToolCallsReceived
-		);
+		try {
+			await _llmClient.SendWithIndefiniteRetry(
+				postprocessedContext,
+				tools,
+				OnLLMResponseComplete,
+				OnToolCallsReceived
+			);
+		}
+		catch (LLMBadRequestException e) {
+			await HandleContextCorruption(e);
+		}
 	}
 
 	private async void OnLLMResponseComplete(LLMMessage assistant) {
@@ -730,12 +740,54 @@ public class AgenticEntity {
 		}, topic: "llm_send");
 
 
-		await _llmClient.SendWithIndefiniteRetry(
-			postprocessedContext,
-			tools,
-			OnLLMResponseComplete,
-			OnToolCallsReceived
-		);
+		try {
+			await _llmClient.SendWithIndefiniteRetry(
+				postprocessedContext,
+				tools,
+				OnLLMResponseComplete,
+				OnToolCallsReceived
+			);
+		}
+		catch (LLMBadRequestException e) {
+			await HandleContextCorruption(e);
+		}
+	}
+
+	private async Task HandleContextCorruption(LLMBadRequestException e) {
+		if (_contextResetAttemptedThisCycle) {
+			GD.PrintErr($"[AgenticEntity] CONTEXT CORRUPTION: Reset already attempted this cycle — giving up. Error: {e.Message}");
+			_telemetry?.Enqueue("context_corruption_fatal", _agentLabel, new {
+				statusCode = e.StatusCode,
+				error = e.Message,
+				responseBody = e.ResponseBody
+			}, topic: "context");
+
+			// Complete the cycle immediately — skip OptimalTurnaroundTime wait since we already
+			// burned time on two failed LLM round-trips. Process() will call CompleteThinkingCycle()
+			// on the next tick.
+			_isLLMDoneThinking = true;
+			_currentLLMTurnaroundTime = Config.OptimalTurnaroundTime;
+			LLMProcessingCompleted?.Invoke();
+			return;
+		}
+
+		_contextResetAttemptedThisCycle = true;
+		int contextSizeBefore = PersistentContext.Count;
+		PersistentContext.Clear();
+		BumpDebug();
+
+		GD.PrintErr($"[AgenticEntity] CONTEXT CORRUPTION DETECTED (HTTP {e.StatusCode}). " +
+			$"Cleared {contextSizeBefore} persistent messages. Retrying with fresh context.");
+
+		_telemetry?.Enqueue("context_corruption_reset", _agentLabel, new {
+			statusCode = e.StatusCode,
+			error = e.Message,
+			contextSizeBefore,
+			responseBody = e.ResponseBody
+		}, topic: "context");
+
+		// Restart the thinking cycle with clean context
+		await StartThinkingCycle();
 	}
 
 	// ---------- Telemetry helpers ----------
