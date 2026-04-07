@@ -140,6 +140,12 @@ public sealed class OpenRouterLLMClient : LLMClient {
 		var parseResult = await ParseCompletionResponseAsync(response.Content).ConfigureAwait(false);
 		var message = parseResult?.Message;
 		if (parseResult?.Usage != null) {
+			var u = parseResult.Usage;
+			int cached = u.PromptTokensDetails?.CachedTokens ?? 0;
+			int written = u.PromptTokensDetails?.CacheWriteTokens ?? 0;
+			int prompt = u.PromptTokens ?? 0;
+			string cacheStatus = cached > 0 ? "HIT" : (written > 0 ? "WRITE" : "NONE");
+			GD.Print($"[OpenRouterLLMClient] Tokens: {prompt} prompt, {u.CompletionTokens ?? 0} completion | Cache: {cacheStatus} — {cached} hit, {written} written");
 			MainThread.Enqueue(() => Economics.Get()?.RecordUsage(parseResult.Usage, parseResult.CacheDiscount));
 		}
 		if (message != null) {
