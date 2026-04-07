@@ -60,8 +60,8 @@ public static class AgenticConfig {
 		file.StoreLine("CHUTES_MAX_TOKENS=10000");
 		file.StoreLine("OPEN_ROUTER_PROVIDER_ONLY=");
 		file.StoreLine("OPEN_ROUTER_PROVIDER_ALLOW_FALLBACKS=");
-		file.StoreLine("OPEN_ROUTER_PROMPT_CACHE_ENABLED=true");
-		file.StoreLine("OPEN_ROUTER_PROMPT_CACHE_TTL=5m");
+		file.StoreLine("PROMPT_CACHE_ENABLED=true");
+		file.StoreLine("PROMPT_CACHE_TTL=");
 		file.StoreLine("STARSHIP_PROMPT_VISION_ENABLED=true");
 		file.StoreLine("STARSHIP_COMMAND_AUTHORITY_LABEL=Command Authority");
 		file.StoreLine("STARSHIP_UI_MONO_FONT=fantasque");
@@ -85,8 +85,8 @@ public static class AgenticConfig {
 		settings["CHUTES_MAX_TOKENS"] = "10000";
 		settings["OPEN_ROUTER_PROVIDER_ONLY"] = "";
 		settings["OPEN_ROUTER_PROVIDER_ALLOW_FALLBACKS"] = "";
-		settings["OPEN_ROUTER_PROMPT_CACHE_ENABLED"] = "true";
-		settings["OPEN_ROUTER_PROMPT_CACHE_TTL"] = "5m";
+		settings["PROMPT_CACHE_ENABLED"] = "true";
+		settings["PROMPT_CACHE_TTL"] = "";
 		settings["STARSHIP_PROMPT_VISION_ENABLED"] = "true";
 		settings["STARSHIP_COMMAND_AUTHORITY_LABEL"] = "Command Authority";
 		settings["STARSHIP_UI_MONO_FONT"] = "fantasque";

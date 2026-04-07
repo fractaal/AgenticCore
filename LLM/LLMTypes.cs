@@ -158,7 +158,14 @@ internal class ChatCompletionRequest {
     [JsonPropertyName("stream")] public bool Stream { get; set; }
     [JsonPropertyName("temperature")] public float? Temperature { get; set; }
     [JsonPropertyName("max_tokens")] public int? MaxTokens { get; set; }
-
+    /// <summary>
+    /// Request-level automatic caching (Anthropic). The provider auto-advances
+    /// the cache breakpoint as the conversation grows, so the growing persistent
+    /// context gets cached without explicit per-message breakpoints.
+    /// </summary>
+    [JsonPropertyName("cache_control")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public CacheControl CacheControl { get; set; }
 }
 
 internal class ReasoningOptions {

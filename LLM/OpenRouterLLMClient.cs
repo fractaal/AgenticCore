@@ -2,7 +2,6 @@ using Godot;
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
@@ -15,26 +14,17 @@ public sealed class OpenRouterLLMClient : LLMClient {
 	private const int MaxErrorBodyBytes = 16 * 1024;
 	private const int ParseTokensPerSlice = 512;
 	private const int ParseMillisPerSlice = 2;
-	private const int MaxCacheBreakpoints = 4;
-	private const int AssistantCacheBreakpoints = 2;
-
 	private readonly string openRouterApiKey;
 	private readonly string model;
 	private readonly float temperature;
 	private readonly ProviderRoutingOptions providerRoutingOptions;
 	private readonly System.Net.Http.HttpClient httpClient;
-	private readonly bool promptCacheEnabled;
-	private readonly string promptCacheTtl;
 
 	public OpenRouterLLMClient() {
 		GD.Print("[OpenRouterLLMClient] Initialize");
 		openRouterApiKey = AgenticConfig.GetValue("OPEN_ROUTER_API_KEY", "");
 		model = AgenticConfig.GetValue("MODEL", "openai/gpt-4o-mini");
 		temperature = AgenticConfig.GetValue("TEMPERATURE", 1.0f);
-		promptCacheEnabled = ParseOptionalBoolLoose(
-			AgenticConfig.GetValue("OPEN_ROUTER_PROMPT_CACHE_ENABLED", "true"),
-			"OPEN_ROUTER_PROMPT_CACHE_ENABLED") ?? true;
-		promptCacheTtl = AgenticConfig.GetValue("OPEN_ROUTER_PROMPT_CACHE_TTL", "5m");
 		var providerOnlyList = ParseProviderList(AgenticConfig.GetValue("OPEN_ROUTER_PROVIDER_ONLY", ""));
 		var allowFallbacks = ParseOptionalBool(AgenticConfig.GetValue("OPEN_ROUTER_PROVIDER_ALLOW_FALLBACKS", ""));
 		if (providerOnlyList != null && providerOnlyList.Count > 0 && allowFallbacks == null) {
@@ -55,7 +45,6 @@ public sealed class OpenRouterLLMClient : LLMClient {
 		}
 
 		GD.Print($"[OpenRouterLLMClient] Configuration loaded - Model: {model}, Temperature: {temperature}");
-		GD.Print($"[OpenRouterLLMClient] Prompt cache enabled={promptCacheEnabled} ttl={promptCacheTtl}");
 		httpClient = new System.Net.Http.HttpClient();
 		httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", openRouterApiKey);
 		httpClient.DefaultRequestHeaders.Add("User-Agent", "Godot-LLM-Interface");
@@ -65,14 +54,13 @@ public sealed class OpenRouterLLMClient : LLMClient {
 	public async Task SendWithIndefiniteRetry(List<LLMMessage> messages, List<Tool> tools,
 		Action<LLMMessage> onComplete, Action<List<ToolCall>, LLMMessage> onToolCalls) {
 		var postprocessedMessages = LLMClientPostprocessor.MergeConsecutiveUserMessages(messages);
-		var cachedMessages = ApplyPromptCaching(postprocessedMessages);
 		GD.Print(
-			$"[OpenRouterLLMClient] Starting SendWithIndefiniteRetry with {cachedMessages.Count} messages and {tools?.Count ?? 0} tools");
+			$"[OpenRouterLLMClient] Starting SendWithIndefiniteRetry with {postprocessedMessages.Count} messages and {tools?.Count ?? 0} tools");
 		int retryCount = 0;
 		while (true) {
 			try {
 				GD.Print($"[OpenRouterLLMClient] Attempt #{retryCount + 1} - Calling Send()");
-				await Send(cachedMessages, tools, onComplete, onToolCalls).ConfigureAwait(false);
+				await Send(postprocessedMessages, tools, onComplete, onToolCalls).ConfigureAwait(false);
 				GD.Print("[OpenRouterLLMClient] Send() completed successfully, breaking retry loop");
 				break;
 			}
@@ -106,7 +94,12 @@ public sealed class OpenRouterLLMClient : LLMClient {
 				// Effort = "low",
 				// Exclude = false,
 				Enabled = true
-			}
+			},
+			// Request-level auto-caching: provider auto-advances the breakpoint as
+			// conversation grows, caching the persistent context without explicit markers.
+			CacheControl = PromptCaching.Enabled
+				? new CacheControl { Type = "ephemeral", Ttl = PromptCaching.DefaultTtl }
+				: null
 		};
 
 		GD.Print("[OpenRouterLLMClient] Request data object created, serializing to JSON");
@@ -165,116 +158,6 @@ public sealed class OpenRouterLLMClient : LLMClient {
 		}
 	}
 
-	private List<LLMMessage> ApplyPromptCaching(List<LLMMessage> messages) {
-		if (!promptCacheEnabled) return messages;
-		if (messages == null || messages.Count == 0) return messages;
-
-		var cached = messages.Select(m => m != null ? new LLMMessage(m) : null).ToList();
-		var usedIndices = new HashSet<int>();
-		int breakpointsUsed = 0;
-
-		int systemIndex = FindFirstIndex(cached, "system", 0);
-		if (systemIndex >= 0 && TryApplyCacheControl(cached[systemIndex], CreateCacheControl())) {
-			usedIndices.Add(systemIndex);
-			breakpointsUsed++;
-		}
-
-		if (breakpointsUsed < MaxCacheBreakpoints) {
-			int firstUserIndex = FindFirstIndex(cached, "user", systemIndex >= 0 ? systemIndex + 1 : 0);
-			if (firstUserIndex >= 0 && !usedIndices.Contains(firstUserIndex)) {
-				if (TryApplyCacheControl(cached[firstUserIndex], CreateCacheControl())) {
-					usedIndices.Add(firstUserIndex);
-					breakpointsUsed++;
-				}
-			}
-		}
-
-		if (breakpointsUsed < MaxCacheBreakpoints) {
-			var assistantIndices = FindLastAssistantIndices(cached, AssistantCacheBreakpoints, usedIndices);
-			foreach (var idx in assistantIndices) {
-				if (breakpointsUsed >= MaxCacheBreakpoints) break;
-				if (TryApplyCacheControl(cached[idx], CreateCacheControl())) {
-					usedIndices.Add(idx);
-					breakpointsUsed++;
-				}
-			}
-		}
-
-		return cached;
-	}
-
-	private CacheControl CreateCacheControl() {
-		if (string.Equals(promptCacheTtl, "1h", StringComparison.OrdinalIgnoreCase)) {
-			return new CacheControl { Type = "ephemeral", Ttl = "1h" };
-		}
-		return new CacheControl { Type = "ephemeral" };
-	}
-
-	private static bool IsAnthropicModel(string modelId) {
-		return !string.IsNullOrWhiteSpace(modelId)
-			&& modelId.StartsWith("anthropic/", StringComparison.OrdinalIgnoreCase);
-	}
-
-	private static int FindFirstIndex(List<LLMMessage> messages, string role, int startIndex) {
-		if (messages == null) return -1;
-		for (int i = Math.Max(0, startIndex); i < messages.Count; i++) {
-			var msg = messages[i];
-			if (msg == null) continue;
-			if (string.Equals(msg.Role, role, StringComparison.Ordinal)) return i;
-		}
-		return -1;
-	}
-
-	private static List<int> FindLastAssistantIndices(List<LLMMessage> messages, int maxCount, HashSet<int> used) {
-		var indices = new List<int>();
-		if (messages == null || maxCount <= 0) return indices;
-		for (int i = messages.Count - 1; i >= 0 && indices.Count < maxCount; i--) {
-			if (used != null && used.Contains(i)) continue;
-			var msg = messages[i];
-			if (msg == null) continue;
-			if (!string.Equals(msg.Role, "assistant", StringComparison.Ordinal)) continue;
-			if (!HasTextContent(msg)) continue;
-			indices.Add(i);
-		}
-		indices.Reverse();
-		return indices;
-	}
-
-	private static bool HasTextContent(LLMMessage message) {
-		if (message == null || message.Content == null) return false;
-		if (message.Content is string text) return !string.IsNullOrWhiteSpace(text);
-		if (message.Content is List<ContentPart> parts) return parts.Any(IsTextPartWithContent);
-		return false;
-	}
-
-	private static bool TryApplyCacheControl(LLMMessage message, CacheControl cacheControl) {
-		if (message == null || cacheControl == null) return false;
-		if (message.Content is string text) {
-			if (string.IsNullOrWhiteSpace(text)) return false;
-			message.Content = new List<ContentPart> {
-				new ContentPart { Type = "text", Text = text, CacheControl = cacheControl }
-			};
-			return true;
-		}
-		if (message.Content is List<ContentPart> parts) {
-			foreach (var part in parts) {
-				if (!IsTextPartWithContent(part)) continue;
-				if (part.CacheControl != null) continue;
-				part.CacheControl = cacheControl;
-				return true;
-			}
-		}
-		return false;
-	}
-
-	private static bool IsTextPartWithContent(ContentPart part) {
-		if (part == null) return false;
-		if (part.ImageUrl != null) return false;
-		if (!string.IsNullOrWhiteSpace(part.Type) &&
-		    !string.Equals(part.Type, "text", StringComparison.OrdinalIgnoreCase)) return false;
-		return !string.IsNullOrWhiteSpace(part.Text);
-	}
-
 	private static List<string> ParseProviderList(string raw) {
 		if (string.IsNullOrWhiteSpace(raw)) return null;
 		var parts = raw.Split(',');
@@ -294,15 +177,6 @@ public sealed class OpenRouterLLMClient : LLMClient {
 		if (raw == "0") return false;
 		GD.PushWarning(
 			$"[OpenRouterLLMClient] Invalid boolean for OPEN_ROUTER_PROVIDER_ALLOW_FALLBACKS: '{raw}'. Use true, false, 1, or 0.");
-		return null;
-	}
-
-	private static bool? ParseOptionalBoolLoose(string raw, string key) {
-		if (string.IsNullOrWhiteSpace(raw)) return null;
-		if (bool.TryParse(raw, out bool parsed)) return parsed;
-		if (raw == "1") return true;
-		if (raw == "0") return false;
-		GD.PushWarning($"[OpenRouterLLMClient] Invalid boolean for {key}: '{raw}'. Use true, false, 1, or 0.");
 		return null;
 	}
 

@@ -104,7 +104,7 @@ public partial class Economics : Node {
 		_label.OffsetLeft = -520;
 		_label.OffsetRight = -16;
 		_label.OffsetTop = 8;
-		_label.OffsetBottom = 72;
+		_label.OffsetBottom = 90;
 
 		_root.AddChild(_label);
 		_layer.AddChild(_root);
@@ -128,9 +128,17 @@ public partial class Economics : Node {
 			? $"saved {FormatMoney(sessionDiscount)}"
 			: $"lost {FormatMoney(Math.Abs(sessionDiscount))}";
 
+		long cachedTokens = _session.CachedTokens;
+		long cacheWriteTokens = _session.CacheWriteTokens;
+		long promptTokens = _session.PromptTokens;
+		string cacheRatio = promptTokens > 0
+			? $"{(double)cachedTokens / promptTokens * 100:0}%"
+			: "—";
+
 		_label.Text =
 			$"All Time {FormatMoney(allTimeBefore)} - {FormatMoney(allTimeIncluding)} including this session\n" +
-			$"This Session {FormatMoney(sessionCost)} (would have been {FormatMoney(sessionWouldHave)} - {sessionDeltaLabel})";
+			$"This Session {FormatMoney(sessionCost)} (would have been {FormatMoney(sessionWouldHave)} - {sessionDeltaLabel})\n" +
+			$"Cache: {FormatTokens(cachedTokens)} hit / {FormatTokens(cacheWriteTokens)} written / {FormatTokens(promptTokens)} prompt ({cacheRatio})";
 	}
 
 	private void Load() {
@@ -158,6 +166,12 @@ public partial class Economics : Node {
 
 	private static string FormatMoney(double amount) {
 		return "$" + amount.ToString("0.00", CultureInfo.InvariantCulture);
+	}
+
+	private static string FormatTokens(long tokens) {
+		if (tokens >= 1_000_000) return (tokens / 1_000_000.0).ToString("0.#", CultureInfo.InvariantCulture) + "M";
+		if (tokens >= 1_000) return (tokens / 1_000.0).ToString("0.#", CultureInfo.InvariantCulture) + "k";
+		return tokens.ToString(CultureInfo.InvariantCulture);
 	}
 }
 

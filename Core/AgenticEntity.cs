@@ -87,6 +87,14 @@ public class AgenticEntity {
 	// Configuration
 	public AgenticEntityConfig Config { get; set; } = new();
 
+	/// <summary>
+	/// Tracks prompt prefix stability across LLM calls. Consumers can read
+	/// <see cref="CacheDiagnostics.LastReport"/> or subscribe to
+	/// <see cref="CacheDiagnostics.ReportGenerated"/> to check whether their
+	/// <c>BuildEphemeralContext</c> produces a cache-friendly prefix.
+	/// </summary>
+	public CacheDiagnostics CacheDiagnostics { get; private set; }
+
 	// LLM Loop State (extracted from original AgenticNPC)
 	private bool _isLLMDoneThinking = false;
 	private bool _hasRequestedLLMResponse = false;
@@ -134,6 +142,7 @@ public class AgenticEntity {
 
 		_agentLabel = ResolveAgentLabel(behavior);
 		_telemetry = TelemetryClient.Get();
+		CacheDiagnostics = new CacheDiagnostics(_agentLabel);
 
 		AgenticConfig.ConfigChanged += OnConfigChanged;
 	}
@@ -558,6 +567,10 @@ public class AgenticEntity {
 		PersistentCountAtLastSend = PersistentContext.Count;
 		BumpDebug();
 
+		// Runs on post-merged context (what the provider actually sees). Merge-induced
+		// structural changes will surface as instability — this is intentional.
+		CacheDiagnostics.Analyze(postprocessedContext);
+
 		// Get available tools
 		var tools = _behavior.GetAvailableTools();
 
@@ -730,6 +743,10 @@ public class AgenticEntity {
 		LastSentContext = postprocessedContext.Select(m => new LLMMessage(m)).ToList();
 		PersistentCountAtLastSend = PersistentContext.Count;
 		BumpDebug();
+
+		// Runs on post-merged context (what the provider actually sees)
+		CacheDiagnostics.Analyze(postprocessedContext);
+
 		var tools = _behavior.GetAvailableTools();
 		_telemetry?.Enqueue("llm_send", _agentLabel, new {
 			messageCount = postprocessedContext.Count,
