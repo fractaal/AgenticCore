@@ -6,7 +6,8 @@ using Godot;
 
 public partial class Economics : Node {
 	private const string SavePath = "user://Economics.json";
-	private const double UiUpdateEpsilon = 0.00001;
+
+	[Signal] public delegate void UsageUpdatedEventHandler();
 
 	private static Economics _instance;
 	public static Economics Instance => _instance;
@@ -32,11 +33,15 @@ public partial class Economics : Node {
 	private EconomicsTotals _session = new();
 	private EconomicsTotals _allTimeAtStart = new();
 
-	private CanvasLayer _layer;
-	private Control _root;
-	private Label _label;
-	private double _lastRenderedSessionCost = double.NaN;
-	private double _lastRenderedAllTimeCost = double.NaN;
+	public double SessionCost => _session.Cost;
+	public double SessionCacheDiscount => _session.CacheDiscount;
+	public long SessionRequests => _session.Requests;
+	public long SessionPromptTokens => _session.PromptTokens;
+	public long SessionCompletionTokens => _session.CompletionTokens;
+	public long SessionCachedTokens => _session.CachedTokens;
+	public long SessionCacheWriteTokens => _session.CacheWriteTokens;
+	public double AllTimeCostBefore => _allTimeAtStart.Cost;
+	public double AllTimeCostCurrent => _allTime.Cost;
 
 	public override void _Ready() {
 		base._Ready();
@@ -47,8 +52,6 @@ public partial class Economics : Node {
 		_instance = this;
 		Load();
 		_allTimeAtStart = _allTime.Clone();
-		BuildOverlay();
-		RefreshDisplay();
 	}
 
 	public override void _ExitTree() {
@@ -63,7 +66,7 @@ public partial class Economics : Node {
 		ApplyUsage(_session, usage, cost, discount);
 		ApplyUsage(_allTime, usage, cost, discount);
 		Save();
-		RefreshDisplay();
+		EmitSignal(SignalName.UsageUpdated);
 	}
 
 	private static void ApplyUsage(EconomicsTotals totals, OpenRouterUsage usage, double cost, double discount) {
@@ -74,71 +77,6 @@ public partial class Economics : Node {
 		totals.CompletionTokens += usage.CompletionTokens ?? 0;
 		totals.CachedTokens += usage.PromptTokensDetails?.CachedTokens ?? 0;
 		totals.CacheWriteTokens += usage.PromptTokensDetails?.CacheWriteTokens ?? 0;
-	}
-
-	private void BuildOverlay() {
-		_layer = new CanvasLayer {
-			Name = "EconomicsOverlay",
-			Layer = 110
-		};
-		_root = new Control {
-			Name = "EconomicsRoot",
-			MouseFilter = Control.MouseFilterEnum.Pass
-		};
-		_root.AnchorLeft = 0;
-		_root.AnchorRight = 1;
-		_root.AnchorTop = 0;
-		_root.AnchorBottom = 1;
-
-		_label = new Label {
-			Name = "EconomicsLabel",
-			HorizontalAlignment = HorizontalAlignment.Right,
-			VerticalAlignment = VerticalAlignment.Top,
-			AutowrapMode = TextServer.AutowrapMode.Off,
-			MouseFilter = Control.MouseFilterEnum.Pass
-		};
-		_label.AnchorLeft = 1;
-		_label.AnchorRight = 1;
-		_label.AnchorTop = 0;
-		_label.AnchorBottom = 0;
-		_label.OffsetLeft = -520;
-		_label.OffsetRight = -16;
-		_label.OffsetTop = 8;
-		_label.OffsetBottom = 90;
-
-		_root.AddChild(_label);
-		_layer.AddChild(_root);
-		CallDeferred(Node.MethodName.AddChild, _layer);
-	}
-
-	private void RefreshDisplay() {
-		if (!GodotObject.IsInstanceValid(_label)) return;
-		if (Math.Abs(_session.Cost - _lastRenderedSessionCost) < UiUpdateEpsilon &&
-		    Math.Abs(_allTime.Cost - _lastRenderedAllTimeCost) < UiUpdateEpsilon) return;
-
-		_lastRenderedSessionCost = _session.Cost;
-		_lastRenderedAllTimeCost = _allTime.Cost;
-
-		double allTimeBefore = _allTimeAtStart.Cost;
-		double allTimeIncluding = _allTime.Cost;
-		double sessionCost = _session.Cost;
-		double sessionDiscount = _session.CacheDiscount;
-		double sessionWouldHave = sessionCost + sessionDiscount;
-		string sessionDeltaLabel = sessionDiscount >= 0.0
-			? $"saved {FormatMoney(sessionDiscount)}"
-			: $"lost {FormatMoney(Math.Abs(sessionDiscount))}";
-
-		long cachedTokens = _session.CachedTokens;
-		long cacheWriteTokens = _session.CacheWriteTokens;
-		long promptTokens = _session.PromptTokens;
-		string cacheRatio = promptTokens > 0
-			? $"{(double)cachedTokens / promptTokens * 100:0}%"
-			: "—";
-
-		_label.Text =
-			$"All Time {FormatMoney(allTimeBefore)} - {FormatMoney(allTimeIncluding)} including this session\n" +
-			$"This Session {FormatMoney(sessionCost)} (would have been {FormatMoney(sessionWouldHave)} - {sessionDeltaLabel})\n" +
-			$"Cache: {FormatTokens(cachedTokens)} hit / {FormatTokens(cacheWriteTokens)} written / {FormatTokens(promptTokens)} prompt ({cacheRatio})";
 	}
 
 	private void Load() {
@@ -164,11 +102,11 @@ public partial class Economics : Node {
 		}
 	}
 
-	private static string FormatMoney(double amount) {
+	public static string FormatMoney(double amount) {
 		return "$" + amount.ToString("0.00", CultureInfo.InvariantCulture);
 	}
 
-	private static string FormatTokens(long tokens) {
+	public static string FormatTokens(long tokens) {
 		if (tokens >= 1_000_000) return (tokens / 1_000_000.0).ToString("0.#", CultureInfo.InvariantCulture) + "M";
 		if (tokens >= 1_000) return (tokens / 1_000.0).ToString("0.#", CultureInfo.InvariantCulture) + "k";
 		return tokens.ToString(CultureInfo.InvariantCulture);
