@@ -5,6 +5,8 @@ using System.Collections.Generic;
 public static class AgenticConfig {
 	private static readonly Dictionary<string, string> settings =
 		new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+	private static readonly HashSet<string> _warnedMissingKeys =
+		new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 	private const string SettingsFilePath = "user://AgenticConfig.txt";
 
 	/// <summary>
@@ -98,7 +100,7 @@ public static class AgenticConfig {
 			return value;
 		}
 
-		GD.PushWarning($"[Config] {key} not found, using default value: {defaultValue}");
+		WarnMissingOnce(key, defaultValue);
 		return defaultValue;
 	}
 
@@ -108,7 +110,7 @@ public static class AgenticConfig {
 			return result;
 		}
 
-		GD.PushWarning($"[Config] {key} not found, using default value: {defaultValue}");
+		WarnMissingOnce(key, defaultValue);
 		return defaultValue;
 	}
 
@@ -119,7 +121,7 @@ public static class AgenticConfig {
 			return result;
 		}
 
-		GD.PushWarning($"[Config] {key} not found, using default value: {defaultValue}");
+		WarnMissingOnce(key, defaultValue);
 		return defaultValue;
 	}
 
@@ -129,7 +131,7 @@ public static class AgenticConfig {
 			return result;
 		}
 
-		GD.PushWarning($"[Config] {key} not found, using default value: {defaultValue}");
+		WarnMissingOnce(key, defaultValue);
 		return defaultValue;
 	}
 
@@ -160,6 +162,12 @@ public static class AgenticConfig {
 			}
 		} catch (Exception e) {
 			GD.PushError($"[Config] Failed to save settings file: {e.Message}");
+		}
+	}
+
+	private static void WarnMissingOnce(string key, object defaultValue) {
+		if (_warnedMissingKeys.Add(key)) {
+			GD.PushWarning($"[Config] {key} not found, using default value: {defaultValue}");
 		}
 	}
 
