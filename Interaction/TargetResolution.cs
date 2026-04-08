@@ -200,6 +200,17 @@ public partial class TargetResolution : Node {
 				if (IsInstanceValid(chosen)) break;
 			}
 			if (!IsInstanceValid(chosen)) {
+				// Check if the tool exists in metadata but was filtered by guards (context-restricted)
+				var guardBlocked = FindGuardBlockedTool(toolCall.Function.Name, interactables);
+				if (guardBlocked != null) {
+					if (VerboseLogging) GD.PrintErr($"[TargetResolution] Tool '{toolCall.Function.Name}' exists on '{guardBlocked}' but is not available in the current calling context (guard blocked).");
+					return Results.FailText(
+						$"Tool '{toolCall.Function.Name}' is not available as a direct tool call — it is a time-sensitive control that " +
+						$"requires sub-second responsiveness (e.g., adjusting shields, throttle, or weapons based on live combat data). " +
+						$"You cannot react fast enough via deliberate tool calls, but a script you write can. " +
+						$"Use setUpdateScript to write a script that calls api.{toolCall.Function.Name}() instead.",
+						"guard_blocked");
+				}
 				var allInteractableNames = string.Join(", ", interactables.Select(i => i.Name));
 				if (VerboseLogging) GD.PrintErr($"[TargetResolution] Tool '{toolCall.Function.Name}' not found on remote entity '{waypoint.GetBelongingEntity<Node>().Name}'. Available interactables: {allInteractableNames}");
 				return Results.FailText($"No interactable on remote target {waypoint.GetBelongingEntity<Node>().Name} advertises public tool: '{toolCall.Function.Name}'.\nAvailable interactables: {allInteractableNames}", "unsupported");
@@ -226,6 +237,17 @@ public partial class TargetResolution : Node {
 				if (IsInstanceValid(chosen)) break;
 			}
 			if (!IsInstanceValid(chosen)) {
+				// Check if the tool exists in metadata but was filtered by guards (context-restricted)
+				var guardBlocked = FindGuardBlockedTool(toolCall.Function.Name, interactables);
+				if (guardBlocked != null) {
+					if (VerboseLogging) GD.PrintErr($"[TargetResolution] Tool '{toolCall.Function.Name}' exists on '{guardBlocked}' but is not available in the current calling context (guard blocked).");
+					return Results.FailText(
+						$"Tool '{toolCall.Function.Name}' is not available as a direct tool call — it is a time-sensitive control that " +
+						$"requires sub-second responsiveness (e.g., adjusting shields, throttle, or weapons based on live combat data). " +
+						$"You cannot react fast enough via deliberate tool calls, but a script you write can. " +
+						$"Use setUpdateScript to write a script that calls api.{toolCall.Function.Name}() instead.",
+						"guard_blocked");
+				}
 				var allInteractableNames = string.Join(", ", interactables.Select(i => i.Name));
 				if (VerboseLogging) GD.PrintErr($"[TargetResolution] Tool '{toolCall.Function.Name}' not found on self entity '{sourceEntity.Name}'. Available interactables: {allInteractableNames}");
 				return Results.FailText($"No interactable on self entity {sourceEntity.Name} advertises private tool: '{toolCall.Function.Name}'.\nAvailable interactables: {allInteractableNames}", "unsupported");
@@ -234,5 +256,22 @@ public partial class TargetResolution : Node {
 			var ctx = new ToolCallContext(sourceNode, targetWaypoint: null, targetInteractable: chosen);
 			return await chosen.ExecuteToolCallAsync(toolCall, ctx);
 		}
+	}
+
+	/// <summary>
+	/// Checks if a tool name exists in the metadata cache of any interactable but was filtered
+	/// out by guards (i.e., it exists but isn't available in the current calling context).
+	/// Returns the interactable name if found, null otherwise.
+	/// </summary>
+	private static string FindGuardBlockedTool(string toolName, IReadOnlyList<Interactable> interactables) {
+		for (int i = 0; i < interactables.Count; i++) {
+			var it = interactables[i];
+			if (!IsInstanceValid(it)) continue;
+			var metas = ToolMetadataCache.GetForType(it.GetType());
+			for (int m = 0; m < metas.Count; m++) {
+				if (metas[m].Name == toolName) return it.Name;
+			}
+		}
+		return null;
 	}
 }
