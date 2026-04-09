@@ -27,7 +27,13 @@ internal static class LLMClientPostprocessor {
 				continue;
 			}
 
-			if (IsUserMessage(message) && merged.Count > 0 && IsUserMessage(merged[^1])) {
+			// Never merge INTO a message that carries a cache_control breakpoint.
+			// The breakpoint promises "this message's content is the end of a stable
+			// prefix"; gluing subsequent user content onto it silently mutates that
+			// prefix and invalidates the provider's prompt cache (see CacheDiagnostics).
+			// Messages after the breakpoint are still allowed to merge with each other.
+			if (IsUserMessage(message) && merged.Count > 0 && IsUserMessage(merged[^1])
+				&& !HasCacheBreakpoint(merged[^1])) {
 				MergeMessageContent(merged[^1], message);
 				continue;
 			}
@@ -40,6 +46,14 @@ internal static class LLMClientPostprocessor {
 
 	private static bool IsUserMessage(LLMMessage message) {
 		return message != null && string.Equals(message.Role, "user", StringComparison.Ordinal);
+	}
+
+	private static bool HasCacheBreakpoint(LLMMessage message) {
+		if (message?.Content is not List<ContentPart> parts) return false;
+		foreach (var part in parts) {
+			if (part?.CacheControl != null) return true;
+		}
+		return false;
 	}
 
 	private static void MergeMessageContent(LLMMessage target, LLMMessage next) {
