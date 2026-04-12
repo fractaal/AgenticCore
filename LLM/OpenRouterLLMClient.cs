@@ -17,6 +17,7 @@ public sealed class OpenRouterLLMClient : LLMClient {
 	private readonly string openRouterApiKey;
 	private readonly string model;
 	private readonly float temperature;
+	private readonly string reasoningEffort;
 	private readonly ProviderRoutingOptions providerRoutingOptions;
 	private readonly System.Net.Http.HttpClient httpClient;
 
@@ -25,6 +26,7 @@ public sealed class OpenRouterLLMClient : LLMClient {
 		openRouterApiKey = AgenticConfig.GetValue("OPEN_ROUTER_API_KEY", "");
 		model = AgenticConfig.GetValue("MODEL", "openai/gpt-4o-mini");
 		temperature = AgenticConfig.GetValue("TEMPERATURE", 1.0f);
+		reasoningEffort = NormalizeReasoningEffort(AgenticConfig.GetValue("OPEN_ROUTER_REASONING_EFFORT", ""));
 		var providerOnlyList = ParseProviderList(AgenticConfig.GetValue("OPEN_ROUTER_PROVIDER_ONLY", ""));
 		var allowFallbacks = ParseOptionalBool(AgenticConfig.GetValue("OPEN_ROUTER_PROVIDER_ALLOW_FALLBACKS", ""));
 		if (providerOnlyList != null && providerOnlyList.Count > 0 && allowFallbacks == null) {
@@ -44,7 +46,8 @@ public sealed class OpenRouterLLMClient : LLMClient {
 				$"[OpenRouterLLMClient] Provider routing override - only: {onlySummary}, allow_fallbacks: {allowFallbacksSummary}");
 		}
 
-		GD.Print($"[OpenRouterLLMClient] Configuration loaded - Model: {model}, Temperature: {temperature}");
+		string reasoningEffortSummary = string.IsNullOrEmpty(reasoningEffort) ? "default" : reasoningEffort;
+		GD.Print($"[OpenRouterLLMClient] Configuration loaded - Model: {model}, Temperature: {temperature}, ReasoningEffort: {reasoningEffortSummary}");
 		httpClient = new System.Net.Http.HttpClient();
 		httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", openRouterApiKey);
 		httpClient.DefaultRequestHeaders.Add("User-Agent", "Godot-LLM-Interface");
@@ -91,8 +94,7 @@ public sealed class OpenRouterLLMClient : LLMClient {
 			MaxTokens = 10000,
 			Provider = providerRoutingOptions,
 			Reasoning = new ReasoningOptions {
-				// Effort = "low",
-				// Exclude = false,
+				Effort = string.IsNullOrEmpty(reasoningEffort) ? null : reasoningEffort,
 				Enabled = true
 			},
 			// Request-level auto-caching: provider auto-advances the breakpoint as
@@ -161,6 +163,25 @@ public sealed class OpenRouterLLMClient : LLMClient {
 		} else {
 			GD.PrintErr("[OpenRouterLLMClient] No choices in response");
 			MainThread.Enqueue(() => onComplete?.Invoke(new LLMMessage { Role = "assistant", Content = "" }));
+		}
+	}
+
+	private static string NormalizeReasoningEffort(string raw) {
+		if (string.IsNullOrWhiteSpace(raw)) return "";
+		string normalized = raw.Trim().ToLowerInvariant();
+		switch (normalized) {
+			case "none":
+			case "minimal":
+			case "low":
+			case "medium":
+			case "high":
+			case "xhigh":
+				return normalized;
+			default:
+				GD.PushWarning(
+					$"[OpenRouterLLMClient] Invalid OPEN_ROUTER_REASONING_EFFORT '{raw}'. " +
+					"Expected one of: none, minimal, low, medium, high, xhigh. Falling back to provider default.");
+				return "";
 		}
 	}
 

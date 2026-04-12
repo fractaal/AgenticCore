@@ -18,6 +18,7 @@ public sealed class ChutesLLMClient : LLMClient {
 	private readonly string model;
 	private readonly float temperature;
 	private readonly int maxTokens;
+	private readonly string reasoningEffort;
 	private readonly ChutesAuthMode authMode;
 	private readonly HttpClient httpClient;
 
@@ -37,6 +38,7 @@ public sealed class ChutesLLMClient : LLMClient {
 
 		temperature = AgenticConfig.GetValue("TEMPERATURE", 1.0f);
 		maxTokens = AgenticConfig.GetValue("CHUTES_MAX_TOKENS", 10000);
+		reasoningEffort = NormalizeReasoningEffort(AgenticConfig.GetValue("CHUTES_REASONING_EFFORT", ""));
 		authMode = ParseAuthMode(AgenticConfig.GetValue("CHUTES_AUTH_MODE", ""));
 
 		httpClient = new HttpClient();
@@ -47,7 +49,8 @@ public sealed class ChutesLLMClient : LLMClient {
 			httpClient.DefaultRequestHeaders.TryAddWithoutValidation("X-API-Key", chutesApiKey);
 		}
 
-		GD.Print($"[ChutesLLMClient] Configuration loaded - BaseUrl: {baseUrl}, Model: {model}, Temperature: {temperature}, MaxTokens: {maxTokens}, AuthMode: {authMode}");
+		string reasoningEffortSummary = string.IsNullOrEmpty(reasoningEffort) ? "default" : reasoningEffort;
+		GD.Print($"[ChutesLLMClient] Configuration loaded - BaseUrl: {baseUrl}, Model: {model}, Temperature: {temperature}, MaxTokens: {maxTokens}, ReasoningEffort: {reasoningEffortSummary}, AuthMode: {authMode}");
 	}
 
 	public async Task SendWithIndefiniteRetry(List<LLMMessage> messages, List<Tool> tools, Action<LLMMessage> onComplete,
@@ -80,6 +83,7 @@ public sealed class ChutesLLMClient : LLMClient {
 			Tools = tools,
 			Temperature = temperature,
 			MaxTokens = maxTokens,
+			ReasoningEffort = string.IsNullOrEmpty(reasoningEffort) ? null : reasoningEffort,
 			Stream = false
 		};
 
@@ -293,6 +297,24 @@ public sealed class ChutesLLMClient : LLMClient {
 		byte[] bytes = await content.ReadAsByteArrayAsync().ConfigureAwait(false);
 		if (bytes.Length <= maxBytes) return Encoding.UTF8.GetString(bytes);
 		return Encoding.UTF8.GetString(bytes, 0, maxBytes) + "...";
+	}
+
+	private static string NormalizeReasoningEffort(string raw) {
+		if (string.IsNullOrWhiteSpace(raw)) return "";
+		string normalized = raw.Trim().ToLowerInvariant();
+		switch (normalized) {
+			case "minimal":
+			case "low":
+			case "medium":
+			case "high":
+				return normalized;
+			default:
+				GD.PushWarning(
+					$"[ChutesLLMClient] Invalid CHUTES_REASONING_EFFORT '{raw}'. " +
+					"Expected one of: minimal, low, medium, high (OpenAI-compatible). " +
+					"Note: not all Chutes-hosted models honor this hint. Falling back to model default.");
+				return "";
+		}
 	}
 
 	private static ChutesAuthMode ParseAuthMode(string rawMode) {

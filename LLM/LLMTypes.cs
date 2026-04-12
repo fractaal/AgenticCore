@@ -159,6 +159,14 @@ internal class ChatCompletionRequest {
     [JsonPropertyName("temperature")] public float? Temperature { get; set; }
     [JsonPropertyName("max_tokens")] public int? MaxTokens { get; set; }
     /// <summary>
+    /// OpenAI-style top-level reasoning effort hint ("minimal" | "low" | "medium" | "high").
+    /// Used by Chutes (OpenAI-compatible passthrough). OpenRouter uses the nested
+    /// <see cref="Reasoning"/> object instead and ignores this field.
+    /// </summary>
+    [JsonPropertyName("reasoning_effort")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string ReasoningEffort { get; set; }
+    /// <summary>
     /// Request-level automatic caching (Anthropic). The provider auto-advances
     /// the cache breakpoint as the conversation grows, so the growing persistent
     /// context gets cached without explicit per-message breakpoints.

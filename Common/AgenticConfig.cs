@@ -48,6 +48,7 @@ public static class AgenticConfig {
 		file.StoreLine("LLM_BACKEND=openrouter");
 		file.StoreLine("OPEN_ROUTER_API_KEY=your_api_key_here");
 		file.StoreLine("MODEL=openai/gpt-4o-mini");
+		file.StoreLine("OPEN_ROUTER_REASONING_EFFORT=");
 		file.StoreLine("CODEX_MODEL=gpt-4.1-mini");
 		file.StoreLine("CODEX_REASONING_EFFORT=");
 		file.StoreLine("CODEX_REASONING_SUMMARY=");
@@ -60,6 +61,7 @@ public static class AgenticConfig {
 		file.StoreLine("CHUTES_MODEL=");
 		file.StoreLine("CHUTES_AUTH_MODE=x-api-key");
 		file.StoreLine("CHUTES_MAX_TOKENS=10000");
+		file.StoreLine("CHUTES_REASONING_EFFORT=");
 		file.StoreLine("OPEN_ROUTER_PROVIDER_ONLY=");
 		file.StoreLine("OPEN_ROUTER_PROVIDER_ALLOW_FALLBACKS=");
 		file.StoreLine("PROMPT_CACHE_ENABLED=true");
@@ -73,6 +75,7 @@ public static class AgenticConfig {
 		settings["LLM_BACKEND"] = "openrouter";
 		settings["OPEN_ROUTER_API_KEY"] = "your_api_key_here";
 		settings["MODEL"] = "openai/gpt-4o-mini";
+		settings["OPEN_ROUTER_REASONING_EFFORT"] = "";
 		settings["CODEX_MODEL"] = "gpt-4.1-mini";
 		settings["CODEX_REASONING_EFFORT"] = "";
 		settings["CODEX_REASONING_SUMMARY"] = "";
@@ -85,6 +88,7 @@ public static class AgenticConfig {
 		settings["CHUTES_MODEL"] = "";
 		settings["CHUTES_AUTH_MODE"] = "x-api-key";
 		settings["CHUTES_MAX_TOKENS"] = "10000";
+		settings["CHUTES_REASONING_EFFORT"] = "";
 		settings["OPEN_ROUTER_PROVIDER_ONLY"] = "";
 		settings["OPEN_ROUTER_PROVIDER_ALLOW_FALLBACKS"] = "";
 		settings["PROMPT_CACHE_ENABLED"] = "true";
