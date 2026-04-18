@@ -66,6 +66,7 @@ public static class AgenticConfig {
 		file.StoreLine("OPEN_ROUTER_PROVIDER_ALLOW_FALLBACKS=");
 		file.StoreLine("PROMPT_CACHE_ENABLED=true");
 		file.StoreLine("PROMPT_CACHE_TTL=");
+		file.StoreLine("LLM_MAX_REQUESTS_PER_SECOND=0");
 		file.StoreLine("STARSHIP_PROMPT_VISION_ENABLED=true");
 		file.StoreLine("STARSHIP_COMMAND_AUTHORITY_LABEL=Command Authority");
 		file.StoreLine("STARSHIP_UI_MONO_FONT=fantasque");
@@ -93,6 +94,7 @@ public static class AgenticConfig {
 		settings["OPEN_ROUTER_PROVIDER_ALLOW_FALLBACKS"] = "";
 		settings["PROMPT_CACHE_ENABLED"] = "true";
 		settings["PROMPT_CACHE_TTL"] = "";
+		settings["LLM_MAX_REQUESTS_PER_SECOND"] = "0";
 		settings["STARSHIP_PROMPT_VISION_ENABLED"] = "true";
 		settings["STARSHIP_COMMAND_AUTHORITY_LABEL"] = "Command Authority";
 		settings["STARSHIP_UI_MONO_FONT"] = "fantasque";

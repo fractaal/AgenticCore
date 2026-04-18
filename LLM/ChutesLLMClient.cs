@@ -55,6 +55,10 @@ public sealed class ChutesLLMClient : LLMClient {
 
 	public async Task SendWithIndefiniteRetry(List<LLMMessage> messages, List<Tool> tools, Action<LLMMessage> onComplete,
 		Action<List<ToolCall>, LLMMessage> onToolCalls) {
+		// Gate the entire send (including any retries) on the global per-process
+		// rate limiter. Acquired once per logical send so retries don't get fresh
+		// admissions — that intentionally throttles tight retry loops too.
+		await GlobalLLMRateLimiter.AcquireAsync();
 		var postprocessedMessages = LLMClientPostprocessor.MergeConsecutiveUserMessages(messages);
 		int retryCount = 0;
 		while (true) {
