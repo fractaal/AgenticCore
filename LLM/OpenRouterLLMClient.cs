@@ -56,10 +56,8 @@ public sealed class OpenRouterLLMClient : LLMClient {
 
 	public async Task SendWithIndefiniteRetry(List<LLMMessage> messages, List<Tool> tools,
 		Action<LLMMessage> onComplete, Action<List<ToolCall>, LLMMessage> onToolCalls) {
-		// Gate the entire send (including any retries) on the global per-process
-		// rate limiter. Acquired once per logical send so retries don't get fresh
-		// admissions — that intentionally throttles tight retry loops too.
-		await GlobalLLMRateLimiter.AcquireAsync();
+		// Rate limiting lives in RateLimitedLLMClient (decorator); this client
+		// is wrapped by the factory so no acquire is needed here.
 		var postprocessedMessages = LLMClientPostprocessor.MergeConsecutiveUserMessages(messages);
 		GD.Print(
 			$"[OpenRouterLLMClient] Starting SendWithIndefiniteRetry with {postprocessedMessages.Count} messages and {tools?.Count ?? 0} tools");

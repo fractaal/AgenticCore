@@ -53,18 +53,23 @@ public interface IAgenticBehavior {
 	virtual void OnThinkingTakingTooLong() { }
 
 	// Called by AgenticEntity right before each REAL LLM send (initial Think
-	// request and every re-prompt after tool calls), AFTER the global rate
-	// limiter has admitted the request and BEFORE BuildEphemeralContext is
-	// invoked to snapshot the context.
+	// request and every re-prompt after tool calls), BEFORE BuildEphemeralContext
+	// snapshots the context (so anything pushed to PersistentContext here lands
+	// in the snapshot) and BEFORE the global rate limiter is acquired (so the
+	// flush is fixed at hook-call time, not at admission time — events that
+	// arrive during the rate-limit wait ride the NEXT send via that send's
+	// own hook call).
 	//
-	// This is the place to flush late-breaking events into PersistentContext
-	// so they ride THIS request and persist for future ones — useful when an
-	// external accumulator (game-side event bus, sensor stream, etc.) has
-	// queued events between the prior tool-result returning and this request
-	// being admitted (a window the rate limiter can stretch significantly).
+	// This is the place to flush late-breaking events into PersistentContext so
+	// they ride THIS request and persist for future ones — useful when an
+	// external accumulator (game-side event bus, sensor stream, etc.) has queued
+	// events between the prior tool-result returning and this request firing.
 	//
 	// NOT called for debug-preview snapshots (UpdateDebugSnapshotNow), which
-	// keeps preview rendering side-effect-free.
+	// keeps preview rendering side-effect-free. CONSEQUENCE: debug previews
+	// render the PRE-flush state and will not show events the next real send
+	// will include. Worth knowing when validating cache behavior or context
+	// assembly via the preview UI.
 	virtual void OnBeforeRequestSubmit() { }
 
 	// Debug surface for UI renderers; optional to implement
@@ -191,21 +196,26 @@ public class AgenticEntity {
 	}
 
 	private static LLMClient CreateConfiguredLLMClient() {
+		// All network-backed clients are wrapped in RateLimitedLLMClient so the
+		// rate-limit acquire happens in exactly one place (the decorator), not
+		// duplicated at the top of each client's SendWithIndefiniteRetry.
+		// MockLLMClient is intentionally NOT wrapped — callers that pass it
+		// directly via the AgenticEntity ctor bypass this factory entirely.
 		string backend = AgenticConfig.GetValue("llm_backend", null);
 		if (string.IsNullOrWhiteSpace(backend)) {
 			backend = AgenticConfig.GetValue("LLM_BACKEND", "openrouter");
 		}
 		if (string.Equals(backend, "codex_chatgpt", StringComparison.OrdinalIgnoreCase)) {
-			return new CodexChatGPTLLMClient();
+			return new RateLimitedLLMClient(new CodexChatGPTLLMClient());
 		}
 		if (string.Equals(backend, "chutes", StringComparison.OrdinalIgnoreCase)
 		    || string.Equals(backend, "chutes_ai", StringComparison.OrdinalIgnoreCase)) {
-			return new ChutesLLMClient();
+			return new RateLimitedLLMClient(new ChutesLLMClient());
 		}
 		if (!string.Equals(backend, "openrouter", StringComparison.OrdinalIgnoreCase)) {
 			GD.PushWarning($"[AgenticEntity] Unknown llm_backend '{backend}', defaulting to OpenRouter.");
 		}
-		return new OpenRouterLLMClient();
+		return new RateLimitedLLMClient(new OpenRouterLLMClient());
 	}
 
 	// Main thinking loop entry point

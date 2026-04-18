@@ -56,14 +56,21 @@ public static class GlobalLLMRateLimiter {
 	/// Safe to call from multiple agents concurrently.
 	/// </summary>
 	public static async Task AcquireAsync() {
-		float rps = _maxRps;
-		if (rps <= 0f) return;
+		// Outer fast-path: skip the lock entirely when the limiter is disabled.
+		// Re-checked inside the lock below so a live ConfigChanged is honored.
+		if (_maxRps <= 0f) return;
 
-		long minIntervalTicks = (long)(TimeSpan.TicksPerSecond / rps);
-		long waitTicks;
+		long waitTicks = 0;
 
 		await _scheduleGate.WaitAsync();
 		try {
+			// Re-read _maxRps inside the lock so any ConfigChanged that fired
+			// between this call's entry and slot scheduling is honored — the
+			// in-flight admission schedules against the CURRENT rate, not the
+			// rate captured before queueing.
+			float rps = _maxRps;
+			if (rps <= 0f) return; // disabled mid-flight: let through with no wait
+			long minIntervalTicks = (long)(TimeSpan.TicksPerSecond / rps);
 			long nowTicks = DateTime.UtcNow.Ticks;
 			long admitAtTicks = Math.Max(nowTicks, _nextAdmissionAtTicks);
 			waitTicks = admitAtTicks - nowTicks;
