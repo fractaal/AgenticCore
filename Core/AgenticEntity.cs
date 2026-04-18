@@ -52,6 +52,21 @@ public interface IAgenticBehavior {
 	virtual void OnThinkingCompleted(bool wasInterrupted = false) { }
 	virtual void OnThinkingTakingTooLong() { }
 
+	// Called by AgenticEntity right before each REAL LLM send (initial Think
+	// request and every re-prompt after tool calls), AFTER the global rate
+	// limiter has admitted the request and BEFORE BuildEphemeralContext is
+	// invoked to snapshot the context.
+	//
+	// This is the place to flush late-breaking events into PersistentContext
+	// so they ride THIS request and persist for future ones — useful when an
+	// external accumulator (game-side event bus, sensor stream, etc.) has
+	// queued events between the prior tool-result returning and this request
+	// being admitted (a window the rate limiter can stretch significantly).
+	//
+	// NOT called for debug-preview snapshots (UpdateDebugSnapshotNow), which
+	// keeps preview rendering side-effect-free.
+	virtual void OnBeforeRequestSubmit() { }
+
 	// Debug surface for UI renderers; optional to implement
 	virtual string GetEphemeralPromptDebugInfo() {
 		return string.Empty;
@@ -559,6 +574,12 @@ public class AgenticEntity {
 	private async Task StartThinkingCycle() {
 		// Build full context via behavior's arbitrary transformation (+ optional floating warning)
 		_sawToolCallsThisCycle = false;
+		// Hook for the behavior to flush any late-queued state into
+		// PersistentContext before the snapshot is taken. Skipped for debug
+		// previews (UpdateDebugSnapshotNow) which call BuildEphemeralContext-
+		// WithWarning directly without going through this path — keeps the
+		// preview rendering side-effect-free.
+		_behavior.OnBeforeRequestSubmit();
 		var fullContext = BuildEphemeralContextWithWarning();
 		var postprocessedContext = LLMClientPostprocessor.MergeConsecutiveUserMessages(fullContext);
 
@@ -738,6 +759,9 @@ public class AgenticEntity {
 		}
 
 		// 4. Re-prompt LLM with updated context (+ optional floating warning)
+		// Same hook as the initial-send path — lets the behavior flush late-
+		// queued state into PersistentContext before the re-prompt snapshot.
+		_behavior.OnBeforeRequestSubmit();
 		var fullContext = BuildEphemeralContextWithWarning();
 		var postprocessedContext = LLMClientPostprocessor.MergeConsecutiveUserMessages(fullContext);
 		LastSentContext = postprocessedContext.Select(m => new LLMMessage(m)).ToList();
