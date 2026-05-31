@@ -184,7 +184,8 @@ public class AgenticEntity {
 		"llm_backend", "LLM_BACKEND",
 		"MODEL", "TEMPERATURE",
 		"OPEN_ROUTER_API_KEY",
-		"CHUTES_API_KEY", "CHUTES_BASE_URL", "CHUTES_MODEL", "CHUTES_AUTH_MODE", "CHUTES_MAX_TOKENS",
+		"CHUTES_API_KEY", "CHUTES_BASE_URL", "CHUTES_USERNAME", "CHUTES_CHUTE_NAME", "CHUTES_MODEL", "CHUTES_AUTH_MODE", "CHUTES_MAX_TOKENS", "CHUTES_REASONING_EFFORT",
+		"OLLAMA_BASE_URL", "OLLAMA_MODEL", "OLLAMA_MAX_TOKENS", "OLLAMA_AUTH_MODE", "OLLAMA_API_KEY",
 		"CODEX_MODEL",
 	};
 
@@ -211,6 +212,9 @@ public class AgenticEntity {
 		if (string.Equals(backend, "chutes", StringComparison.OrdinalIgnoreCase)
 		    || string.Equals(backend, "chutes_ai", StringComparison.OrdinalIgnoreCase)) {
 			return new RateLimitedLLMClient(new ChutesLLMClient());
+		}
+		if (string.Equals(backend, "ollama", StringComparison.OrdinalIgnoreCase)) {
+			return new RateLimitedLLMClient(new OllamaLLMClient());
 		}
 		if (!string.Equals(backend, "openrouter", StringComparison.OrdinalIgnoreCase)) {
 			GD.PushWarning($"[AgenticEntity] Unknown llm_backend '{backend}', defaulting to OpenRouter.");

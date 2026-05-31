@@ -62,6 +62,11 @@ public static class AgenticConfig {
 		file.StoreLine("CHUTES_AUTH_MODE=x-api-key");
 		file.StoreLine("CHUTES_MAX_TOKENS=10000");
 		file.StoreLine("CHUTES_REASONING_EFFORT=");
+		file.StoreLine("OLLAMA_BASE_URL=http://localhost:11434");
+		file.StoreLine("OLLAMA_MODEL=llama3.1");
+		file.StoreLine("OLLAMA_MAX_TOKENS=10000");
+		file.StoreLine("OLLAMA_AUTH_MODE=none");
+		file.StoreLine("OLLAMA_API_KEY=");
 		file.StoreLine("OPEN_ROUTER_PROVIDER_ONLY=");
 		file.StoreLine("OPEN_ROUTER_PROVIDER_ALLOW_FALLBACKS=");
 		file.StoreLine("PROMPT_CACHE_ENABLED=true");
@@ -90,6 +95,11 @@ public static class AgenticConfig {
 		settings["CHUTES_AUTH_MODE"] = "x-api-key";
 		settings["CHUTES_MAX_TOKENS"] = "10000";
 		settings["CHUTES_REASONING_EFFORT"] = "";
+		settings["OLLAMA_BASE_URL"] = "http://localhost:11434";
+		settings["OLLAMA_MODEL"] = "llama3.1";
+		settings["OLLAMA_MAX_TOKENS"] = "10000";
+		settings["OLLAMA_AUTH_MODE"] = "none";
+		settings["OLLAMA_API_KEY"] = "";
 		settings["OPEN_ROUTER_PROVIDER_ONLY"] = "";
 		settings["OPEN_ROUTER_PROVIDER_ALLOW_FALLBACKS"] = "";
 		settings["PROMPT_CACHE_ENABLED"] = "true";
