@@ -65,6 +65,7 @@ public static class AgenticConfig {
 		file.StoreLine("OLLAMA_BASE_URL=http://localhost:11434");
 		file.StoreLine("OLLAMA_MODEL=llama3.1");
 		file.StoreLine("OLLAMA_MAX_TOKENS=10000");
+		file.StoreLine("OLLAMA_THINK=");
 		file.StoreLine("OLLAMA_AUTH_MODE=none");
 		file.StoreLine("OLLAMA_API_KEY=");
 		file.StoreLine("OPEN_ROUTER_PROVIDER_ONLY=");
@@ -98,6 +99,7 @@ public static class AgenticConfig {
 		settings["OLLAMA_BASE_URL"] = "http://localhost:11434";
 		settings["OLLAMA_MODEL"] = "llama3.1";
 		settings["OLLAMA_MAX_TOKENS"] = "10000";
+		settings["OLLAMA_THINK"] = "";
 		settings["OLLAMA_AUTH_MODE"] = "none";
 		settings["OLLAMA_API_KEY"] = "";
 		settings["OPEN_ROUTER_PROVIDER_ONLY"] = "";

@@ -167,6 +167,13 @@ internal class ChatCompletionRequest {
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string ReasoningEffort { get; set; }
     /// <summary>
+    /// Ollama OpenAI-compatible thinking switch. Null preserves model/server defaults;
+    /// true/false explicitly enables or disables thinking for models that support it.
+    /// </summary>
+    [JsonPropertyName("think")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? Think { get; set; }
+    /// <summary>
     /// Request-level automatic caching (Anthropic). The provider auto-advances
     /// the cache breakpoint as the conversation grows, so the growing persistent
     /// context gets cached without explicit per-message breakpoints.

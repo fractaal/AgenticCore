@@ -39,7 +39,8 @@ public sealed class OpenAICompatibleLLMClient : LLMClient {
 		ApplyAuthHeaders(httpClient, this.options);
 
 		string reasoningEffortSummary = string.IsNullOrEmpty(this.options.ReasoningEffort) ? "default" : this.options.ReasoningEffort;
-		GD.Print($"[{this.options.ClientName}] Configuration loaded - BaseUrl: {this.options.BaseUrl}, Model: {this.options.Model}, Temperature: {this.options.Temperature}, MaxTokens: {this.options.MaxTokens}, ReasoningEffort: {reasoningEffortSummary}, AuthMode: {this.options.AuthMode}");
+		string thinkSummary = this.options.Think.HasValue ? this.options.Think.Value.ToString() : "model default";
+		GD.Print($"[{this.options.ClientName}] Configuration loaded - BaseUrl: {this.options.BaseUrl}, Model: {this.options.Model}, Temperature: {this.options.Temperature}, MaxTokens: {this.options.MaxTokens}, ReasoningEffort: {reasoningEffortSummary}, Think: {thinkSummary}, AuthMode: {this.options.AuthMode}");
 	}
 
 	public async Task SendWithIndefiniteRetry(List<LLMMessage> messages, List<Tool> tools, Action<LLMMessage> onComplete,
@@ -75,6 +76,7 @@ public sealed class OpenAICompatibleLLMClient : LLMClient {
 			Temperature = options.Temperature,
 			MaxTokens = options.MaxTokens,
 			ReasoningEffort = string.IsNullOrEmpty(options.ReasoningEffort) ? null : options.ReasoningEffort,
+			Think = options.Think,
 			Stream = false
 		};
 
@@ -326,6 +328,7 @@ public sealed class OpenAICompatibleLLMClientOptions {
 	public float Temperature { get; set; } = 1.0f;
 	public int MaxTokens { get; set; } = 10000;
 	public string ReasoningEffort { get; set; }
+	public bool? Think { get; set; }
 	public string ApiKey { get; set; }
 	public OpenAICompatibleAuthMode AuthMode { get; set; } = OpenAICompatibleAuthMode.None;
 }

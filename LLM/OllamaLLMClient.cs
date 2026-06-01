@@ -22,6 +22,7 @@ public sealed class OllamaLLMClient : LLMClient {
 			Model = AgenticConfig.GetValue("OLLAMA_MODEL", "llama3.1"),
 			Temperature = AgenticConfig.GetValue("TEMPERATURE", 1.0f),
 			MaxTokens = AgenticConfig.GetValue("OLLAMA_MAX_TOKENS", 10000),
+			Think = ParseOptionalBool(AgenticConfig.GetValue("OLLAMA_THINK", "")),
 			ApiKey = apiKey,
 			AuthMode = authMode
 		});
@@ -30,6 +31,28 @@ public sealed class OllamaLLMClient : LLMClient {
 	public Task SendWithIndefiniteRetry(List<LLMMessage> messages, List<Tool> tools, Action<LLMMessage> onComplete,
 		Action<List<ToolCall>, LLMMessage> onToolCalls) {
 		return inner.SendWithIndefiniteRetry(messages, tools, onComplete, onToolCalls);
+	}
+
+	private static bool? ParseOptionalBool(string raw) {
+		if (string.IsNullOrWhiteSpace(raw)) return null;
+
+		string normalized = raw.Trim().ToLowerInvariant();
+		switch (normalized) {
+			case "true":
+			case "1":
+			case "yes":
+			case "on":
+				return true;
+			case "false":
+			case "0":
+			case "no":
+			case "off":
+				return false;
+			default:
+				GD.PushWarning(
+					$"[OllamaLLMClient] Invalid OLLAMA_THINK '{raw}'. Use true, false, 1, 0, yes, no, on, off, or leave empty for the model default.");
+				return null;
+		}
 	}
 
 	private static OpenAICompatibleAuthMode ParseAuthMode(string rawMode) {
